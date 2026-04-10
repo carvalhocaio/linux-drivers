@@ -28,7 +28,9 @@ REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 BREW="/home/linuxbrew/.linuxbrew/bin/brew"
 as_user() { sudo -u "$REAL_USER" bash -c "$*"; }
-brew_run() { as_user "eval \"\$($BREW shellenv)\" && $*"; }
+brew_run() {
+    as_user "eval \"\$($BREW shellenv)\" && export PATH=\"\${ASDF_DATA_DIR:-\$HOME/.asdf}/shims:\$PATH\" && $*"
+}
 
 header "Driver Update — Lenovo ThinkPad E14"
 
@@ -245,6 +247,13 @@ info "Python 3.10.14 installed"
 
 brew_run "asdf install nodejs 24.14.0 && asdf set --u nodejs 24.14.0"
 info "Node.js 24.14.0 installed"
+
+if brew_run "node --version >/dev/null && npm --version >/dev/null"; then
+    info "Node.js and npm available via asdf shims"
+else
+    err "Node.js/npm not found in PATH after asdf setup"
+    exit 1
+fi
 
 brew_run "npm install -g aicommits"
 info "aicommits installed"
