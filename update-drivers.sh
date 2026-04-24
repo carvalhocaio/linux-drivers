@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Driver update script — Lenovo ThinkPad E14
-# Ubuntu 24.04 | Intel Iris Xe | Intel Tiger Lake Audio
+# Ubuntu| Intel Iris Xe | Intel Tiger Lake Audio
 #
 # Strategy: apt for drivers/firmware/kernel (system-level)
 #           Homebrew for userland tools (newer versions)
