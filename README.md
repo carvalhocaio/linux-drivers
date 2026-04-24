@@ -1,6 +1,6 @@
 # Ubuntu Drivers — Lenovo ThinkPad E14
 
-Shell script to update all drivers on a Lenovo ThinkPad E14 running Ubuntu 24.04.
+Shell script to update all drivers on a Lenovo ThinkPad E14 running Ubuntu.
 
 ## What it updates
 
