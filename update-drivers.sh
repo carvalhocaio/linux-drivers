@@ -142,12 +142,14 @@ apt install -y \
 info "Build dependencies installed (apt)"
 
 # Install Homebrew as the real (non-root) user.
-# Strategy: download the installer to a temp file first, then execute it.
-# This avoids subshell quoting issues with env -i + bash -c '$(...)'
+# Tmpfile goes in REAL_HOME (not /tmp) because Ubuntu 26.04 mounts /tmp
+# with noexec, causing "Permission denied" even after chmod +x.
 if [[ ! -d /home/linuxbrew/.linuxbrew ]]; then
-    BREW_INSTALLER=$(mktemp /tmp/brew-install-XXXXXX.sh)
-    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$BREW_INSTALLER"
-    chmod +x "$BREW_INSTALLER"
+    BREW_INSTALLER="$REAL_HOME/.brew-install-$$.sh"
+    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh \
+        -o "$BREW_INSTALLER"
+    chown "$REAL_USER":"$REAL_USER" "$BREW_INSTALLER"
+    chmod 755 "$BREW_INSTALLER"
     sudo -u "$REAL_USER" env -i \
         HOME="$REAL_HOME" \
         USER="$REAL_USER" \
@@ -228,18 +230,14 @@ FISHEOF
 chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.config/fish/config.fish"
 
 cat > "$REAL_HOME/.config/starship.toml" << 'STAREOF'
-# Get editor completions based on the config schema
 "$schema" = 'https://starship.rs/config-schema.json'
 
-# Inserts a blank line between shell prompts
 add_newline = true
 
-# Replace the '❯' symbol in the prompt with '➜'
 [character]
 success_symbol = '[➜](bold green)'
 error_symbol = '[➜](bold green)'
 
-# Disable the package module, hiding it from the prompt completely
 [package]
 disabled = true
 
