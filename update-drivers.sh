@@ -119,6 +119,10 @@ info "Security drivers and firmware updated"
 header "6/10 — Build Dependencies (apt) + Homebrew"
 # ──────────────────────────────────────────────
 
+# Pre-requisite: curl (needed for Homebrew installer)
+apt install -y curl
+info "curl installed"
+
 # System libraries needed for compiling (must stay in apt)
 apt install -y \
     make \
@@ -129,8 +133,7 @@ apt install -y \
     libreadline-dev \
     libsqlite3-dev \
     llvm \
-    libncurses5-dev \
-    libncursesw5-dev \
+    libncurses-dev \
     xz-utils \
     tk-dev \
     libffi-dev \
@@ -138,9 +141,15 @@ apt install -y \
 
 info "Build dependencies installed (apt)"
 
-# Install Homebrew
+# Install Homebrew (must run as non-root, with clean env to avoid NONINTERACTIVE leaking from sudo)
 if [[ ! -d /home/linuxbrew/.linuxbrew ]]; then
-    as_user 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    sudo -u "$REAL_USER" env -i \
+        HOME="$REAL_HOME" \
+        USER="$REAL_USER" \
+        LOGNAME="$REAL_USER" \
+        PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+        NONINTERACTIVE=1 \
+        /bin/bash -c '$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)'
     info "Homebrew installed"
 else
     info "Homebrew already installed"
