@@ -27,7 +27,7 @@ Shell script to update all drivers on a Lenovo ThinkPad E14 running Ubuntu.
 
 ## Usage
 
-### Recomendado: via `git clone`
+### Recommended: via `git clone`
 
 ```bash
 git clone https://github.com/carvalhocaio/ubuntu-drivers.git
@@ -35,20 +35,21 @@ cd ubuntu-drivers
 sudo ./update-drivers.sh
 ```
 
-Usando `git clone`, a permissão de execução do script é preservada automaticamente.
+Using `git clone` preserves the execution permission of the script automatically.
 
-### Via download ZIP
+### Via ZIP download
 
-Se você baixou o repositório como `.zip` pelo GitHub, o bit de execução **não é preservado**.
-É necessário concedê-lo manualmente antes de rodar:
+If you downloaded the repository as a `.zip` from GitHub, the execute bit **is not preserved**.
+You need to grant it manually before running:
 
 ```bash
 chmod +x update-drivers.sh
 sudo ./update-drivers.sh
 ```
 
-O script requer privilégios de root e perguntará sobre reboot ao final, caso necessário.
+The script requires root privileges and will prompt for a reboot at the end if one is needed.
 
 ## Requirements
-- `curl` (instalado automaticamente pelo script caso ausente)
-- `fwupd` e `ubuntu-drivers` (pré-instalados no Ubuntu Desktop)
+
+- `curl` (installed automatically by the script if missing)
+- `fwupd` and `ubuntu-drivers` (pre-installed on Ubuntu Desktop)

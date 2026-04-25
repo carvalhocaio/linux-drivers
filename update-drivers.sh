@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Driver update script — Lenovo ThinkPad E14
-# Ubuntu| Intel Iris Xe | Intel Tiger Lake Audio
+# Ubuntu | Intel Iris Xe | Intel Tiger Lake Audio
 #
 # Strategy: apt for drivers/firmware/kernel (system-level)
 #           Homebrew for userland tools (newer versions)
@@ -141,15 +141,21 @@ apt install -y \
 
 info "Build dependencies installed (apt)"
 
-# Install Homebrew (must run as non-root, with clean env to avoid NONINTERACTIVE leaking from sudo)
+# Install Homebrew as the real (non-root) user.
+# Strategy: download the installer to a temp file first, then execute it.
+# This avoids subshell quoting issues with env -i + bash -c '$(...)'
 if [[ ! -d /home/linuxbrew/.linuxbrew ]]; then
+    BREW_INSTALLER=$(mktemp /tmp/brew-install-XXXXXX.sh)
+    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$BREW_INSTALLER"
+    chmod +x "$BREW_INSTALLER"
     sudo -u "$REAL_USER" env -i \
         HOME="$REAL_HOME" \
         USER="$REAL_USER" \
         LOGNAME="$REAL_USER" \
         PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
         NONINTERACTIVE=1 \
-        /bin/bash -c '$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)'
+        /bin/bash "$BREW_INSTALLER"
+    rm -f "$BREW_INSTALLER"
     info "Homebrew installed"
 else
     info "Homebrew already installed"
@@ -229,8 +235,8 @@ cat > "$REAL_HOME/.config/starship.toml" << 'STAREOF'
 add_newline = true
 
 # Replace the '❯' symbol in the prompt with '➜'
-[character] # The name of the module we are configuring is 'character'
-success_symbol = '[➜](bold green)' # The 'success_symbol' segment is being set to '➜' with the color 'bold green'
+[character]
+success_symbol = '[➜](bold green)'
 error_symbol = '[➜](bold green)'
 
 # Disable the package module, hiding it from the prompt completely
