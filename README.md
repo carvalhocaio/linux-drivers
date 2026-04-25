@@ -34,6 +34,4 @@ sudo ./update-drivers.sh
 The script requires root privileges. It will prompt for a reboot at the end if one is needed.
 
 ## Requirements
-
-- Ubuntu 24.04 LTS (Noble Numbat)
 - `fwupd` and `ubuntu-drivers` (pre-installed on Ubuntu Desktop)
