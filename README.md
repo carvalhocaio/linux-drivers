@@ -1,6 +1,6 @@
 # Ubuntu Drivers — Lenovo ThinkPad E14
 
-Shell script to update all drivers on a Lenovo ThinkPad E14 running Ubuntu.
+Shell script to update drivers and selected dev setup steps on a Lenovo ThinkPad E14 running Ubuntu.
 
 ## What it updates
 
@@ -11,13 +11,14 @@ Shell script to update all drivers on a Lenovo ThinkPad E14 running Ubuntu.
 | 3 | **Audio** | PipeWire, ALSA, Intel SOF firmware |
 | 4 | **Network** | Realtek Wi-Fi/Ethernet firmware, Bluetooth (BlueZ) |
 | 5 | **Security & Firmware** | Kernel, `intel-microcode`, `thermald`, TPM tools, Lenovo firmware via `fwupd` |
-| 6 | **Dev Tools** | `build-essential`, `libssl-dev`, `libreadline-dev`, `libsqlite3-dev`, `llvm`, `git`, `vim`, and more |
+| 6 | **Build + Brew** | `build-essential`, `libssl-dev`, and Homebrew bootstrap/update |
 | 7 | **Docker** | Docker Engine, CLI, containerd, Buildx, Compose plugin |
-| 8 | **Shell Setup** | Fish shell (set as default), Starship prompt, `config.fish`, `starship.toml` |
-| 9 | **Homebrew + asdf** | Homebrew, asdf, Python 3.10.14, Node.js 24.14.0, aicommits |
-| 10 | **Fonts** | JetBrains Mono (all `.ttf` variants, including NL) |
-| 11 | **Tools** | `gh` CLI (GitHub apt repo), Zed editor |
-| 12 | **Cleanup** | Removes orphaned packages |
+| 8 | **Userland (Brew)** | `git`, `curl`, `wget`, `vim`, `fish`, `starship`, `gh`, `asdf` |
+| 9 | **Shell + asdf** | Fish config, Starship config, Python 3.10.14, Node.js 24.14.0, aicommits |
+| 10 | **Fonts** | JetBrains Mono latest stable (download at runtime) |
+| 11 | **JetBrains** | JetBrains Toolbox latest stable (download at runtime) |
+| 12 | **Tools** | Zed editor |
+| 13 | **Cleanup** | Remove orphaned packages and stale caches |
 
 ## Hardware
 
@@ -36,7 +37,13 @@ cd ubuntu-drivers
 sudo ./update-drivers.sh
 ```
 
-Using `git clone` preserves the execution permission of the script automatically.
+The script opens an interactive selector in the terminal:
+
+- Arrow keys: move
+- Space: check/uncheck a step
+- Enter: run selected steps
+- `a`: toggle all
+- `q`: quit
 
 ### Via ZIP download
 

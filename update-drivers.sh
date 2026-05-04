@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
 
-#
-# Driver update script — Lenovo ThinkPad E14
-# Ubuntu 26.04 LTS | Intel Iris Xe | Intel Tiger Lake Audio
-#
-# Strategy: apt for drivers/firmware/kernel (system-level)
-#           Homebrew for userland tools (newer versions)
-#
-# Usage:
-#   chmod +x update-drivers.sh   # required when downloading outside git clone
-#   sudo ./update-drivers.sh
-#
-
 set -euo pipefail
 
 GREEN='\033[0;32m'
@@ -19,18 +7,14 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-info()   { echo -e "${GREEN}[✔]${NC} $*"; }
-warn()   { echo -e "${YELLOW}[!]${NC} $*"; }
-err()    { echo -e "${RED}[✘]${NC} $*"; }
+info() { echo -e "${GREEN}[✔]${NC} $*"; }
+warn() { echo -e "${YELLOW}[!]${NC} $*"; }
+err() { echo -e "${RED}[✘]${NC} $*"; }
 header() {
-  echo -e "\n${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "\n${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${GREEN} $*${NC}"
-  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 }
-
-# ──────────────────────────────────────────────
-# Initial checks
-# ──────────────────────────────────────────────
 
 if [[ $EUID -ne 0 ]]; then
   err "Please run with sudo: sudo $0"
@@ -40,7 +24,12 @@ fi
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 BREW="/home/linuxbrew/.linuxbrew/bin/brew"
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+JETBRAINS_TOOLBOX_URL="https://data.services.jetbrains.com/products/download?platform=linux&code=TBA"
+JETBRAINS_MONO_API_URL="https://api.github.com/repos/JetBrains/JetBrainsMono/releases/latest"
+
+TMP_ROOT="$(mktemp -d)"
+trap 'rm -rf "$TMP_ROOT"' EXIT
 
 as_user() { sudo -u "$REAL_USER" bash -c "$*"; }
 
@@ -48,153 +37,163 @@ brew_run() {
   as_user "eval \"\$($BREW shellenv)\" && export PATH=\"\${ASDF_DATA_DIR:-\$HOME/.asdf}/shims:\$PATH\" && $*"
 }
 
-header "Driver Update — Lenovo ThinkPad E14 (Ubuntu 26.04)"
+brew_ensure_pkg() {
+  local pkg="$1"
+  if brew_run "brew list --formula '$pkg' >/dev/null 2>&1"; then
+    brew_run "brew upgrade '$pkg' >/dev/null 2>&1 || true"
+    info "$pkg verified via Homebrew"
+  else
+    brew_run "brew install '$pkg'"
+    info "$pkg installed via Homebrew"
+  fi
+}
 
-# ──────────────────────────────────────────────
-header "1/10 — Updating system packages (apt)"
-# ──────────────────────────────────────────────
+declare -A STEP_TITLE
+declare -A STEP_DESC
 
-apt update
-apt upgrade -y
-info "System packages updated"
+STEP_TITLE[1]="Updating system packages (apt)"
+STEP_TITLE[2]="Video drivers (Intel Iris Xe / Mesa)"
+STEP_TITLE[3]="Audio drivers (Intel Tiger Lake / PipeWire)"
+STEP_TITLE[4]="Network drivers (Realtek Wi-Fi/Bluetooth/Ethernet)"
+STEP_TITLE[5]="Firmware and security drivers"
+STEP_TITLE[6]="Build dependencies + Homebrew bootstrap"
+STEP_TITLE[7]="Docker Engine"
+STEP_TITLE[8]="Userland tools (Homebrew)"
+STEP_TITLE[9]="Shell config + Languages (asdf)"
+STEP_TITLE[10]="JetBrains Mono font"
+STEP_TITLE[11]="JetBrains Toolbox"
+STEP_TITLE[12]="Zed Editor"
+STEP_TITLE[13]="Cleanup"
 
-# ──────────────────────────────────────────────
-header "2/10 — Video drivers (Intel Iris Xe / Mesa)"
-# ──────────────────────────────────────────────
+STEP_DESC[1]="apt update/upgrade"
+STEP_DESC[2]="mesa, intel media, ubuntu-drivers"
+STEP_DESC[3]="pipewire, alsa, sof firmware"
+STEP_DESC[4]="dkms, bluez"
+STEP_DESC[5]="kernel, microcode, fwupd, thermald"
+STEP_DESC[6]="build deps + install Homebrew"
+STEP_DESC[7]="docker-ce + compose plugin"
+STEP_DESC[8]="git curl wget vim fish starship gh asdf"
+STEP_DESC[9]="fish config + python/node via asdf"
+STEP_DESC[10]="download and install latest JetBrains Mono"
+STEP_DESC[11]="download and install latest JetBrains Toolbox"
+STEP_DESC[12]="install Zed"
+STEP_DESC[13]="apt/brew cleanup"
 
-# Note: xserver-xorg-video-intel was removed in Ubuntu 24.04+.
-# The Iris Xe uses the kernel's 'modesetting' driver — no extra package needed.
-apt install -y --only-upgrade \
-  mesa-vulkan-drivers \
-  libgl1-mesa-dri \
-  libglu1-mesa \
-  libegl-mesa0 \
-  libglx-mesa0 \
-  mesa-utils \
-  intel-media-va-driver \
-  intel-gpu-tools 2>/dev/null || true
+run_step() {
+  local n="$1"
+  local idx="$2"
+  local total="$3"
+  header "$idx/$total — ${STEP_TITLE[$n]}"
+  "step_$n"
+}
 
-if command -v ubuntu-drivers &>/dev/null; then
-  info "Checking recommended drivers..."
-  ubuntu-drivers install 2>/dev/null || warn "No additional recommended drivers found"
-fi
+step_1() {
+  apt update
+  apt upgrade -y
+  info "System packages updated"
+}
 
-info "Video drivers updated"
+step_2() {
+  apt install -y --only-upgrade \
+    mesa-vulkan-drivers \
+    libgl1-mesa-dri \
+    libglu1-mesa \
+    libegl-mesa0 \
+    libglx-mesa0 \
+    mesa-utils \
+    intel-media-va-driver \
+    intel-gpu-tools 2>/dev/null || true
 
-# ──────────────────────────────────────────────
-header "3/10 — Audio drivers (Intel Tiger Lake / PipeWire)"
-# ──────────────────────────────────────────────
+  if command -v ubuntu-drivers &>/dev/null; then
+    info "Checking recommended drivers..."
+    ubuntu-drivers install 2>/dev/null || warn "No additional recommended drivers found"
+  fi
+  info "Video drivers verified/updated"
+}
 
-apt install -y --only-upgrade \
-  pipewire \
-  pipewire-pulse \
-  pipewire-alsa \
-  wireplumber \
-  alsa-utils \
-  alsa-base \
-  firmware-sof-signed \
-  linux-firmware 2>/dev/null || true
+step_3() {
+  apt install -y --only-upgrade \
+    pipewire \
+    pipewire-pulse \
+    pipewire-alsa \
+    wireplumber \
+    alsa-utils \
+    alsa-base \
+    firmware-sof-signed \
+    linux-firmware 2>/dev/null || true
+  info "Audio drivers verified/updated"
+}
 
-info "Audio drivers updated"
+step_4() {
+  apt install -y --only-upgrade \
+    dkms \
+    bluez \
+    bluez-tools 2>/dev/null || true
+  info "Network drivers verified/updated"
+}
 
-# ──────────────────────────────────────────────
-header "4/10 — Network drivers (Realtek Wi-Fi/Bluetooth/Ethernet)"
-# ──────────────────────────────────────────────
+step_5() {
+  apt install -y --only-upgrade \
+    linux-generic \
+    linux-firmware \
+    intel-microcode \
+    fwupd \
+    tpm2-tools \
+    thermald 2>/dev/null || true
 
-# Note: 'firmware-realtek' and 'r8168-dkms' are Debian non-free packages,
-# not available in Ubuntu repos. Realtek firmware is already covered by
-# 'linux-firmware'. Only bluez/dkms are needed here.
-apt install -y --only-upgrade \
-  dkms \
-  bluez \
-  bluez-tools 2>/dev/null || true
+  if systemctl is-enabled thermald &>/dev/null; then
+    systemctl start thermald 2>/dev/null || true
+    info "thermald is active"
+  else
+    systemctl enable --now thermald 2>/dev/null || warn "Could not enable thermald"
+  fi
 
-info "Network drivers updated"
+  if command -v fwupdmgr &>/dev/null; then
+    info "Checking Lenovo firmware via fwupd..."
+    fwupdmgr refresh --force 2>/dev/null || true
+    fwupdmgr get-updates 2>/dev/null && fwupdmgr update -y 2>/dev/null || warn "No firmware updates available"
+  fi
+  info "Firmware and security verified/updated"
+}
 
-# ──────────────────────────────────────────────
-header "5/10 — Firmware and security drivers"
-# ──────────────────────────────────────────────
+step_6() {
+  apt install -y curl git
+  apt install -y \
+    make \
+    build-essential \
+    libssl-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    llvm \
+    libncurses-dev \
+    xz-utils \
+    tk-dev \
+    libffi-dev \
+    liblzma-dev
+  info "Build dependencies verified/updated"
 
-apt install -y --only-upgrade \
-  linux-generic \
-  linux-firmware \
-  intel-microcode \
-  fwupd \
-  tpm2-tools \
-  thermald 2>/dev/null || true
+  if [[ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+    rm -rf /home/linuxbrew/.linuxbrew
+    sudo -u "$REAL_USER" NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    info "Homebrew installed"
+  else
+    info "Homebrew already installed"
+  fi
 
-if systemctl is-enabled thermald &>/dev/null; then
-  systemctl start thermald 2>/dev/null || true
-  info "thermald is active"
-else
-  systemctl enable --now thermald 2>/dev/null || warn "Could not enable thermald"
-fi
+  brew_run "brew update"
+  brew_ensure_pkg "gcc"
+}
 
-if command -v fwupdmgr &>/dev/null; then
-  info "Checking Lenovo firmware via fwupd..."
-  fwupdmgr refresh --force 2>/dev/null || true
-  fwupdmgr get-updates 2>/dev/null && \
-    fwupdmgr update -y 2>/dev/null || warn "No firmware updates available"
-fi
+step_7() {
+  apt remove -y docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc 2>/dev/null || true
 
-info "Firmware and security drivers updated"
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
 
-# ──────────────────────────────────────────────
-header "6/10 — Build dependencies (apt) + Homebrew"
-# ──────────────────────────────────────────────
-
-# curl and git are required by the Homebrew installer — must come before it.
-apt install -y curl git
-info "curl and git installed (Homebrew bootstrap)"
-
-apt install -y \
-  make \
-  build-essential \
-  libssl-dev \
-  zlib1g-dev \
-  libbz2-dev \
-  libreadline-dev \
-  libsqlite3-dev \
-  llvm \
-  libncurses-dev \
-  xz-utils \
-  tk-dev \
-  libffi-dev \
-  liblzma-dev
-
-info "Build dependencies installed (apt)"
-
-# Install Homebrew as the real (non-root) user.
-# Uses the official command from the Homebrew docs:
-#   https://docs.brew.sh/Installation
-# The installer requires git and curl in PATH — installed above via apt.
-# Checks for the brew binary (not just the directory) to detect incomplete installs.
-if [[ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
-  # Remove any incomplete previous installation
-  rm -rf /home/linuxbrew/.linuxbrew
-  sudo -u "$REAL_USER" \
-    NONINTERACTIVE=1 \
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  info "Homebrew installed"
-else
-  info "Homebrew already installed"
-fi
-
-brew_run "brew update"
-brew_run "brew install gcc"
-info "Homebrew updated (gcc installed)"
-
-# ──────────────────────────────────────────────
-header "7/10 — Docker Engine"
-# ──────────────────────────────────────────────
-
-apt remove -y docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc 2>/dev/null || true
-
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
-
-tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+  tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
 Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
@@ -202,47 +201,40 @@ Components: stable
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
 
-apt update
-apt install -y \
-  docker-ce \
-  docker-ce-cli \
-  containerd.io \
-  docker-buildx-plugin \
-  docker-compose-plugin
+  apt update
+  apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-usermod -aG docker "$REAL_USER"
-info "Docker Engine installed (relogin required for group changes)"
+  usermod -aG docker "$REAL_USER"
+  info "Docker Engine installed/updated (relogin required for group changes)"
+}
 
-# ──────────────────────────────────────────────
-header "8/10 — Userland tools (Homebrew)"
-# ──────────────────────────────────────────────
+step_8() {
+  local pkg
+  for pkg in git curl wget vim fish starship gh asdf; do
+    brew_ensure_pkg "$pkg"
+  done
 
-brew_run "brew install git curl wget vim fish starship gh asdf"
-info "Tools installed via Homebrew (git, curl, wget, vim, fish, starship, gh, asdf)"
+  BREW_FISH="$(/home/linuxbrew/.linuxbrew/bin/brew --prefix)/bin/fish"
+  if ! grep -qF "$BREW_FISH" /etc/shells; then
+    echo "$BREW_FISH" >> /etc/shells
+  fi
+  chsh -s "$BREW_FISH" "$REAL_USER"
+  info "Fish shell set as default (Homebrew version)"
+}
 
-BREW_FISH="$(/home/linuxbrew/.linuxbrew/bin/brew --prefix)/bin/fish"
-if ! grep -qF "$BREW_FISH" /etc/shells; then
-  echo "$BREW_FISH" >> /etc/shells
-fi
-chsh -s "$BREW_FISH" "$REAL_USER"
-info "Fish shell set as default (Homebrew version)"
+step_9() {
+  as_user "mkdir -p '$REAL_HOME/.config/fish'"
 
-# ──────────────────────────────────────────────
-header "9/10 — Shell config + Languages (asdf)"
-# ──────────────────────────────────────────────
-
-as_user mkdir -p "$REAL_HOME/.config/fish"
-
-cat > "$REAL_HOME/.config/fish/config.fish" << 'FISHEOF'
+  cat >"$REAL_HOME/.config/fish/config.fish" <<'FISHEOF'
 if status is-interactive
     eval (/home/linuxbrew/.linuxbrew/bin/brew shellenv)
     starship init fish | source
     set -gx PATH $HOME/.asdf/shims $PATH
 end
 FISHEOF
-chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.config/fish/config.fish"
+  chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.config/fish/config.fish"
 
-cat > "$REAL_HOME/.config/starship.toml" << 'STAREOF'
+  cat >"$REAL_HOME/.config/starship.toml" <<'STAREOF'
 "$schema" = 'https://starship.rs/config-schema.json'
 
 add_newline = true
@@ -260,84 +252,231 @@ symbol = "⬢ "
 [gcloud]
 disabled = true
 STAREOF
-chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.config/starship.toml"
+  chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.config/starship.toml"
 
-info "Fish and Starship configured"
+  brew_run "asdf plugin add python || true"
+  brew_run "asdf plugin add nodejs || true"
+  brew_run "asdf install python 3.10.14 && asdf set --home python 3.10.14"
+  brew_run "asdf install nodejs 24.14.0 && asdf set --home nodejs 24.14.0"
 
-# asdf plugins
-brew_run "asdf plugin add python || true"
-brew_run "asdf plugin add nodejs || true"
-info "asdf plugins added (python, nodejs)"
-
-# Fix: correct flag is '--home', not '--u' (--u does not exist in asdf)
-brew_run "asdf install python 3.10.14 && asdf set --home python 3.10.14"
-info "Python 3.10.14 installed"
-
-brew_run "asdf install nodejs 24.14.0 && asdf set --home nodejs 24.14.0"
-info "Node.js 24.14.0 installed"
-
-if brew_run "node --version >/dev/null && npm --version >/dev/null"; then
-  info "Node.js and npm available via asdf shims"
-else
-  err "Node.js/npm not found in PATH after asdf setup"
-  exit 1
-fi
-
-brew_run "npm install -g aicommits"
-info "aicommits installed"
-
-# ──────────────────────────────────────────────
-header "10/11 — JetBrains Mono font"
-# ──────────────────────────────────────────────
-
-JETBRAINS_SRC_DIR="$SCRIPT_DIR/JetBrainsMono-2.304/fonts/ttf"
-JETBRAINS_DEST_DIR="$REAL_HOME/.local/share/fonts/JetBrainsMono"
-
-if [[ -d "$JETBRAINS_SRC_DIR" ]]; then
-  if ! command -v fc-cache &>/dev/null; then
-    apt install -y fontconfig
+  if brew_run "node --version >/dev/null && npm --version >/dev/null"; then
+    info "Node.js and npm available via asdf shims"
+  else
+    err "Node.js/npm not found in PATH after asdf setup"
+    exit 1
   fi
 
-  as_user "mkdir -p '$JETBRAINS_DEST_DIR'"
-  cp "$JETBRAINS_SRC_DIR"/*.ttf "$JETBRAINS_DEST_DIR/"
-  chown "$REAL_USER":"$REAL_USER" "$JETBRAINS_DEST_DIR"/*.ttf
+  brew_run "npm install -g aicommits"
+  info "Fish, Starship, asdf, Python, Node.js configured"
+}
+
+step_10() {
+  local font_zip="$TMP_ROOT/JetBrainsMono.zip"
+  local font_extract="$TMP_ROOT/JetBrainsMono"
+  local font_dest="$REAL_HOME/.local/share/fonts/JetBrainsMono"
+  local release_json
+  local mono_download_url
+
+  if as_user "test -d '$font_dest' && ls '$font_dest'/*.ttf >/dev/null 2>&1"; then
+    info "JetBrains Mono already installed (skipping)"
+    return
+  fi
+
+  apt install -y fontconfig unzip
+  release_json="$(curl -fsSL "$JETBRAINS_MONO_API_URL")"
+  mono_download_url="$(python3 -c 'import json,sys; d=json.load(sys.stdin); a=next((x for x in d.get("assets",[]) if x.get("name","").startswith("JetBrainsMono-") and x.get("name","").endswith(".zip")), None); print((a or {}).get("browser_download_url",""))' <<< "$release_json")"
+
+  if [[ -z "$mono_download_url" ]]; then
+    warn "Could not find JetBrains Mono release asset URL"
+    return
+  fi
+
+  curl -fL "$mono_download_url" -o "$font_zip"
+  mkdir -p "$font_extract"
+  unzip -q "$font_zip" -d "$font_extract"
+
+  as_user "mkdir -p '$font_dest'"
+  cp "$font_extract"/fonts/ttf/*.ttf "$font_dest/"
+  chown "$REAL_USER":"$REAL_USER" "$font_dest"/*.ttf
   as_user "fc-cache -f '$REAL_HOME/.local/share/fonts'"
-  info "JetBrains Mono installed (all TTF variants)"
-else
-  warn "JetBrains Mono source not found at: $JETBRAINS_SRC_DIR"
-fi
+  info "JetBrains Mono installed from latest stable release"
+}
 
-# ──────────────────────────────────────────────
-header "11/11 — Zed Editor + Cleanup"
-# ──────────────────────────────────────────────
+step_11() {
+  local toolbox_tgz="$TMP_ROOT/jetbrains-toolbox.tar.gz"
+  local toolbox_extract="$TMP_ROOT/toolbox"
+  local toolbox_root
+  local toolbox_install="$REAL_HOME/.local/share/JetBrains/Toolbox"
+  local toolbox_bin="$toolbox_install/bin/jetbrains-toolbox"
 
-as_user 'curl -f https://zed.dev/install.sh | sh'
-info "Zed editor installed"
+  mkdir -p "$toolbox_extract"
+  curl -fL "$JETBRAINS_TOOLBOX_URL" -o "$toolbox_tgz"
+  tar -xzf "$toolbox_tgz" -C "$toolbox_extract"
 
-apt autoremove -y
-apt autoclean -y
-brew_run "brew cleanup"
-info "Cleanup complete"
+  toolbox_root="$(compgen -G "$toolbox_extract/jetbrains-toolbox-*" | head -n 1 || true)"
+  if [[ -z "$toolbox_root" || ! -x "$toolbox_root/bin/jetbrains-toolbox" ]]; then
+    warn "Could not find jetbrains-toolbox binary inside downloaded archive"
+    return
+  fi
 
-# ──────────────────────────────────────────────
-header "Summary"
-# ──────────────────────────────────────────────
+  as_user "mkdir -p '$REAL_HOME/.local/share/JetBrains' '$REAL_HOME/.local/bin'"
+  rm -rf "$toolbox_install"
+  mv "$toolbox_root" "$toolbox_install"
+  chown -R "$REAL_USER":"$REAL_USER" "$toolbox_install"
+  as_user "ln -sf '$toolbox_bin' '$REAL_HOME/.local/bin/jetbrains-toolbox'"
+  as_user "nohup '$toolbox_bin' >/dev/null 2>&1 &"
+  info "JetBrains Toolbox installed from latest stable release (first start triggered)"
+}
 
-echo "  Kernel:     $(uname -r)"
-echo "  Mesa:       $(dpkg -l libgl1-mesa-dri 2>/dev/null | awk '/^ii/{print $3}')"
-echo "  PipeWire:   $(pipewire --version 2>/dev/null | head -1 || echo 'N/A')"
-echo "  Microcode:  $(dpkg -l intel-microcode 2>/dev/null | awk '/^ii/{print $3}')"
-echo "  fwupd:      $(fwupdmgr --version 2>/dev/null | head -1 || echo 'N/A')"
-echo "  Docker:     $(docker --version 2>/dev/null || echo 'N/A')"
-echo "  Homebrew:   $(brew_run 'brew --version' 2>/dev/null | head -1 || echo 'N/A')"
-echo "  Git:        $(brew_run 'git --version' 2>/dev/null || echo 'N/A')"
-echo "  Fish:       $(brew_run 'fish --version' 2>/dev/null || echo 'N/A')"
-echo "  Starship:   $(brew_run 'starship --version' 2>/dev/null | head -1 || echo 'N/A')"
-echo "  Python:     $(brew_run '$HOME/.asdf/shims/python --version' 2>/dev/null || echo 'N/A')"
-echo "  Node.js:    $(brew_run '$HOME/.asdf/shims/node --version' 2>/dev/null || echo 'N/A')"
-echo "  gh:         $(brew_run 'gh --version' 2>/dev/null | head -1 || echo 'N/A')"
-echo "  Zed:        $(as_user '$HOME/.local/bin/zed --version' 2>/dev/null || echo 'N/A')"
-echo ""
+step_12() {
+  as_user 'curl -f https://zed.dev/install.sh | sh'
+  info "Zed editor installed"
+}
+
+step_13() {
+  apt autoremove -y
+  apt autoclean -y
+  if [[ -x "$BREW" ]]; then
+    brew_run "brew cleanup"
+  fi
+  info "Cleanup complete"
+}
+
+choose_steps() {
+  local i
+  local mark
+  local pointer
+  local key
+  local current=1
+  local all_selected
+  local -i max_step=13
+  declare -A selected
+
+  for i in $(seq 1 "$max_step"); do
+    selected[$i]=0
+  done
+  for i in 1 2 3 4 5; do
+    selected[$i]=1
+  done
+
+  tput civis
+  trap 'tput cnorm; stty echo; printf "\n"' RETURN
+
+  while true; do
+    tput clear
+    printf "Driver Update - Select steps\n\n"
+    printf "Use Up/Down to move, Space to toggle, Enter to run\n"
+    printf "a: toggle all | q: quit\n\n"
+
+    for i in $(seq 1 "$max_step"); do
+      mark="[ ]"
+      pointer=" "
+      [[ ${selected[$i]} -eq 1 ]] && mark="[x]"
+      [[ $i -eq $current ]] && pointer=">"
+      printf "%s %2d %s %s\n" "$pointer" "$i" "$mark" "${STEP_TITLE[$i]}"
+    done
+
+    IFS= read -rsn1 key || true
+
+    if [[ "$key" == "" ]]; then
+      SELECTED_STEPS=()
+      for i in $(seq 1 "$max_step"); do
+        [[ ${selected[$i]} -eq 1 ]] && SELECTED_STEPS+=("$i")
+      done
+      if [[ ${#SELECTED_STEPS[@]} -gt 0 ]]; then
+        tput cnorm
+        trap - RETURN
+        printf "\n"
+        return
+      fi
+      continue
+    fi
+
+    case "$key" in
+      q|Q)
+        tput cnorm
+        trap - RETURN
+        printf "\n"
+        warn "Cancelled by user."
+        exit 0
+        ;;
+      a|A)
+        all_selected=1
+        for i in $(seq 1 "$max_step"); do
+          if [[ ${selected[$i]} -eq 0 ]]; then
+            all_selected=0
+            break
+          fi
+        done
+        for i in $(seq 1 "$max_step"); do
+          if [[ $all_selected -eq 1 ]]; then
+            selected[$i]=0
+          else
+            selected[$i]=1
+          fi
+        done
+        ;;
+      ' ')
+        if [[ ${selected[$current]} -eq 1 ]]; then
+          selected[$current]=0
+        else
+          selected[$current]=1
+        fi
+        ;;
+      $'\x1b')
+        IFS= read -rsn2 key || true
+        case "$key" in
+          "[A")
+            if [[ $current -gt 1 ]]; then
+              current=$((current - 1))
+            else
+              current=$max_step
+            fi
+            ;;
+          "[B")
+            if [[ $current -lt $max_step ]]; then
+              current=$((current + 1))
+            else
+              current=1
+            fi
+            ;;
+        esac
+        ;;
+    esac
+  done
+}
+
+print_summary() {
+  header "Summary"
+  echo "  Kernel:     $(uname -r)"
+  echo "  Mesa:       $(dpkg -l libgl1-mesa-dri 2>/dev/null | awk '/^ii/{print $3}')"
+  echo "  PipeWire:   $(pipewire --version 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Microcode:  $(dpkg -l intel-microcode 2>/dev/null | awk '/^ii/{print $3}')"
+  echo "  fwupd:      $(fwupdmgr --version 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Docker:     $(docker --version 2>/dev/null || echo 'N/A')"
+  echo "  Homebrew:   $(brew_run 'brew --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Git:        $(brew_run 'git --version' 2>/dev/null || echo 'N/A')"
+  echo "  Fish:       $(brew_run 'fish --version' 2>/dev/null || echo 'N/A')"
+  echo "  Starship:   $(brew_run 'starship --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Python:     $(brew_run '$HOME/.asdf/shims/python --version' 2>/dev/null || echo 'N/A')"
+  echo "  Node.js:    $(brew_run '$HOME/.asdf/shims/node --version' 2>/dev/null || echo 'N/A')"
+  echo "  gh:         $(brew_run 'gh --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Toolbox:    $(as_user 'test -x $HOME/.local/bin/jetbrains-toolbox && echo Installed' 2>/dev/null || echo 'N/A')"
+  echo "  Zed:        $(as_user '$HOME/.local/bin/zed --version' 2>/dev/null || echo 'N/A')"
+  echo ""
+}
+
+header "Driver Update — Lenovo ThinkPad E14 (Ubuntu 26.04)"
+choose_steps
+
+TOTAL_STEPS="${#SELECTED_STEPS[@]}"
+CURRENT=1
+for step in "${SELECTED_STEPS[@]}"; do
+  run_step "$step" "$CURRENT" "$TOTAL_STEPS"
+  CURRENT=$((CURRENT + 1))
+done
+
+print_summary
 
 if [[ -f /var/run/reboot-required ]]; then
   warn "Reboot required to apply all updates."
