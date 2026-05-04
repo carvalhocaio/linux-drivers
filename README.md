@@ -19,6 +19,9 @@ Shell script to update drivers and selected dev setup steps on a Lenovo ThinkPad
 | 11 | **JetBrains** | JetBrains Toolbox latest stable (download at runtime) |
 | 12 | **Tools** | Zed editor |
 | 13 | **Cleanup** | Remove orphaned packages and stale caches |
+| 14 | **AI Tooling** | Claude Code installer (current user) |
+| 15 | **AI Tooling** | GitHub Copilot CLI installer (current user) |
+| 16 | **Terminal** | Warp latest `.deb` (download at runtime) |
 
 ## Hardware
 

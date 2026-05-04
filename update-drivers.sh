@@ -64,6 +64,9 @@ STEP_TITLE[10]="JetBrains Mono font"
 STEP_TITLE[11]="JetBrains Toolbox"
 STEP_TITLE[12]="Zed Editor"
 STEP_TITLE[13]="Cleanup"
+STEP_TITLE[14]="Claude Code"
+STEP_TITLE[15]="GitHub Copilot CLI"
+STEP_TITLE[16]="Warp Terminal"
 
 STEP_DESC[1]="apt update/upgrade"
 STEP_DESC[2]="mesa, intel media, ubuntu-drivers"
@@ -78,6 +81,9 @@ STEP_DESC[10]="download and install latest JetBrains Mono"
 STEP_DESC[11]="download and install latest JetBrains Toolbox"
 STEP_DESC[12]="install Zed"
 STEP_DESC[13]="apt/brew cleanup"
+STEP_DESC[14]="install Claude Code for current user"
+STEP_DESC[15]="install GitHub Copilot CLI for current user"
+STEP_DESC[16]="install Warp (.deb)"
 
 run_step() {
   local n="$1"
@@ -342,6 +348,23 @@ step_13() {
   info "Cleanup complete"
 }
 
+step_14() {
+  as_user 'curl -fsSL https://claude.ai/install.sh | bash'
+  info "Claude Code installed for $REAL_USER"
+}
+
+step_15() {
+  as_user 'curl -fsSL https://gh.io/copilot-install | bash'
+  info "GitHub Copilot CLI installed for $REAL_USER"
+}
+
+step_16() {
+  local warp_deb="$TMP_ROOT/warp.deb"
+  curl -fL "https://app.warp.dev/get_warp?package=deb" -o "$warp_deb"
+  apt install -y "$warp_deb"
+  info "Warp installed/updated"
+}
+
 choose_steps() {
   local i
   local mark
@@ -349,7 +372,7 @@ choose_steps() {
   local key
   local current=1
   local all_selected
-  local -i max_step=13
+  local -i max_step=16
   declare -A selected
 
   for i in $(seq 1 "$max_step"); do
@@ -461,6 +484,9 @@ print_summary() {
   echo "  Python:     $(brew_run '$HOME/.asdf/shims/python --version' 2>/dev/null || echo 'N/A')"
   echo "  Node.js:    $(brew_run '$HOME/.asdf/shims/node --version' 2>/dev/null || echo 'N/A')"
   echo "  gh:         $(brew_run 'gh --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Claude:     $(as_user 'claude --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Copilot:    $(as_user 'github-copilot-cli --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Warp:       $(warp-terminal --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Toolbox:    $(as_user 'test -x $HOME/.local/bin/jetbrains-toolbox && echo Installed' 2>/dev/null || echo 'N/A')"
   echo "  Zed:        $(as_user '$HOME/.local/bin/zed --version' 2>/dev/null || echo 'N/A')"
   echo ""
