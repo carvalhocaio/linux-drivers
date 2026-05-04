@@ -24,9 +24,12 @@ fi
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 BREW="/home/linuxbrew/.linuxbrew/bin/brew"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 JETBRAINS_TOOLBOX_URL="https://data.services.jetbrains.com/products/download?platform=linux&code=TBA"
 JETBRAINS_MONO_API_URL="https://api.github.com/repos/JetBrains/JetBrainsMono/releases/latest"
+WALLPAPER_REL_PATH="assets/wallpapers/red_distortion_3.jpg"
+WALLPAPER_OPTIONS="zoom"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -67,6 +70,7 @@ STEP_TITLE[13]="Cleanup"
 STEP_TITLE[14]="Claude Code"
 STEP_TITLE[15]="GitHub Copilot CLI"
 STEP_TITLE[16]="Warp Terminal"
+STEP_TITLE[17]="Wallpaper"
 
 STEP_DESC[1]="apt update/upgrade"
 STEP_DESC[2]="mesa, intel media, ubuntu-drivers"
@@ -84,6 +88,7 @@ STEP_DESC[13]="apt/brew cleanup"
 STEP_DESC[14]="install Claude Code for current user"
 STEP_DESC[15]="install GitHub Copilot CLI for current user"
 STEP_DESC[16]="install Warp (.deb)"
+STEP_DESC[17]="set GNOME wallpaper"
 
 run_step() {
   local n="$1"
@@ -360,9 +365,60 @@ step_15() {
 
 step_16() {
   local warp_deb="$TMP_ROOT/warp.deb"
-  curl -fL "https://app.warp.dev/get_warp?package=deb" -o "$warp_deb"
+  local warp_pkg="deb"
+
+  if [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]]; then
+    warp_pkg="deb_arm64"
+  fi
+
+  curl -fL "https://app.warp.dev/download?package=$warp_pkg" -o "$warp_deb"
+
+  if ! dpkg-deb --info "$warp_deb" >/dev/null 2>&1; then
+    warn "Downloaded Warp package is invalid"
+    return
+  fi
+
   apt install -y "$warp_deb"
   info "Warp installed/updated"
+}
+
+step_17() {
+  local wallpaper_path="$SCRIPT_DIR/$WALLPAPER_REL_PATH"
+  local wallpaper_uri="file://$wallpaper_path"
+  local real_uid
+  local runtime_dir
+  local session_bus
+  local current_uri
+
+  if [[ ! -f "$wallpaper_path" ]]; then
+    warn "Wallpaper file not found: $wallpaper_path"
+    return
+  fi
+
+  if ! command -v gsettings >/dev/null 2>&1; then
+    warn "gsettings not found; wallpaper was not configured"
+    return
+  fi
+
+  real_uid="$(id -u "$REAL_USER")"
+  runtime_dir="/run/user/$real_uid"
+  session_bus="$runtime_dir/bus"
+
+  if [[ ! -S "$session_bus" ]]; then
+    warn "Desktop session bus not found for $REAL_USER; log in graphically and run this step again"
+    return
+  fi
+
+  as_user "export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'; gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'"
+  as_user "export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'; gsettings set org.gnome.desktop.background picture-uri-dark '$wallpaper_uri'"
+  as_user "export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'; gsettings set org.gnome.desktop.background picture-options '$WALLPAPER_OPTIONS'"
+
+  current_uri="$(as_user "export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'; gsettings get org.gnome.desktop.background picture-uri" 2>/dev/null || true)"
+  if [[ "$current_uri" == "'$wallpaper_uri'" ]]; then
+    info "Wallpaper configured for $REAL_USER"
+  else
+    warn "Wallpaper could not be confirmed via gsettings"
+  fi
 }
 
 choose_steps() {
@@ -372,7 +428,7 @@ choose_steps() {
   local key
   local current=1
   local all_selected
-  local -i max_step=16
+  local -i max_step=17
   declare -A selected
 
   for i in $(seq 1 "$max_step"); do
@@ -487,6 +543,7 @@ print_summary() {
   echo "  Claude:     $(as_user 'claude --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Copilot:    $(as_user 'github-copilot-cli --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Warp:       $(warp-terminal --version 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  Wallpaper:  $(as_user 'gsettings get org.gnome.desktop.background picture-uri' 2>/dev/null || echo 'N/A')"
   echo "  Toolbox:    $(as_user 'test -x $HOME/.local/bin/jetbrains-toolbox && echo Installed' 2>/dev/null || echo 'N/A')"
   echo "  Zed:        $(as_user '$HOME/.local/bin/zed --version' 2>/dev/null || echo 'N/A')"
   echo ""

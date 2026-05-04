@@ -22,6 +22,7 @@ Shell script to update drivers and selected dev setup steps on a Lenovo ThinkPad
 | 14 | **AI Tooling** | Claude Code installer (current user) |
 | 15 | **AI Tooling** | GitHub Copilot CLI installer (current user) |
 | 16 | **Terminal** | Warp latest `.deb` (download at runtime) |
+| 17 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
 
 ## Hardware
 
