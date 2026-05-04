@@ -40,6 +40,7 @@ fi
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 BREW="/home/linuxbrew/.linuxbrew/bin/brew"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 as_user() { sudo -u "$REAL_USER" bash -c "$*"; }
 
@@ -286,7 +287,28 @@ brew_run "npm install -g aicommits"
 info "aicommits installed"
 
 # ──────────────────────────────────────────────
-header "10/10 — Zed Editor + Cleanup"
+header "10/11 — JetBrains Mono font"
+# ──────────────────────────────────────────────
+
+JETBRAINS_SRC_DIR="$SCRIPT_DIR/JetBrainsMono-2.304/fonts/ttf"
+JETBRAINS_DEST_DIR="$REAL_HOME/.local/share/fonts/JetBrainsMono"
+
+if [[ -d "$JETBRAINS_SRC_DIR" ]]; then
+  if ! command -v fc-cache &>/dev/null; then
+    apt install -y fontconfig
+  fi
+
+  as_user "mkdir -p '$JETBRAINS_DEST_DIR'"
+  cp "$JETBRAINS_SRC_DIR"/*.ttf "$JETBRAINS_DEST_DIR/"
+  chown "$REAL_USER":"$REAL_USER" "$JETBRAINS_DEST_DIR"/*.ttf
+  as_user "fc-cache -f '$REAL_HOME/.local/share/fonts'"
+  info "JetBrains Mono installed (all TTF variants)"
+else
+  warn "JetBrains Mono source not found at: $JETBRAINS_SRC_DIR"
+fi
+
+# ──────────────────────────────────────────────
+header "11/11 — Zed Editor + Cleanup"
 # ──────────────────────────────────────────────
 
 as_user 'curl -f https://zed.dev/install.sh | sh'

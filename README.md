@@ -15,8 +15,9 @@ Shell script to update all drivers on a Lenovo ThinkPad E14 running Ubuntu.
 | 7 | **Docker** | Docker Engine, CLI, containerd, Buildx, Compose plugin |
 | 8 | **Shell Setup** | Fish shell (set as default), Starship prompt, `config.fish`, `starship.toml` |
 | 9 | **Homebrew + asdf** | Homebrew, asdf, Python 3.10.14, Node.js 24.14.0, aicommits |
-| 10 | **Tools** | `gh` CLI (GitHub apt repo), Zed editor |
-| 11 | **Cleanup** | Removes orphaned packages |
+| 10 | **Fonts** | JetBrains Mono (all `.ttf` variants, including NL) |
+| 11 | **Tools** | `gh` CLI (GitHub apt repo), Zed editor |
+| 12 | **Cleanup** | Removes orphaned packages |
 
 ## Hardware
 
