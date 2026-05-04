@@ -21,7 +21,7 @@ Shell script to update drivers and selected dev setup steps on a Lenovo ThinkPad
 | 13 | **Cleanup** | Remove orphaned packages and stale caches |
 | 14 | **AI Tooling** | Claude Code installer (current user) |
 | 15 | **AI Tooling** | GitHub Copilot CLI installer (current user) |
-| 16 | **Terminal** | Warp latest `.deb` (download at runtime) |
+| 16 | **Terminal** | Warp latest `.deb` (download via `app.warp.dev/download?package=deb`) |
 | 17 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
 
 ## Hardware
@@ -41,7 +41,7 @@ cd ubuntu-drivers
 sudo ./update-drivers.sh
 ```
 
-The script opens an interactive selector in the terminal:
+The script opens an interactive selector in the terminal (steps `1-5` are pre-selected by default):
 
 - Arrow keys: move
 - Space: check/uncheck a step
@@ -61,7 +61,11 @@ sudo ./update-drivers.sh
 
 The script requires root privileges and will prompt for a reboot at the end if one is needed.
 
+Note for step 17 (Wallpaper): this step needs an active graphical login session for the selected user.
+If no desktop session bus is available yet, the script will skip wallpaper setup and show a warning.
+
 ## Requirements
 
 - `curl` (installed automatically by the script if missing)
 - `fwupd` and `ubuntu-drivers` (pre-installed on Ubuntu Desktop)
+- `fontconfig` and `unzip` are installed automatically when needed (JetBrains Mono step)
