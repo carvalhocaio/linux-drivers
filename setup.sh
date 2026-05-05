@@ -26,7 +26,6 @@ REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 BREW="/home/linuxbrew/.linuxbrew/bin/brew"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-JETBRAINS_TOOLBOX_URL="https://data.services.jetbrains.com/products/download?platform=linux&code=TBA"
 JETBRAINS_MONO_API_URL="https://api.github.com/repos/JetBrains/JetBrainsMono/releases/latest"
 WALLPAPER_REL_PATH="assets/wallpapers/red_distortion_3.jpg"
 WALLPAPER_OPTIONS="zoom"
@@ -64,13 +63,12 @@ STEP_TITLE[7]="Docker Engine"
 STEP_TITLE[8]="Userland tools (Homebrew)"
 STEP_TITLE[9]="Shell config + Languages (asdf)"
 STEP_TITLE[10]="JetBrains Mono font"
-STEP_TITLE[11]="JetBrains Toolbox"
-STEP_TITLE[12]="Zed Editor"
-STEP_TITLE[13]="Cleanup"
-STEP_TITLE[14]="Claude Code"
-STEP_TITLE[15]="GitHub Copilot CLI"
-STEP_TITLE[16]="Warp Terminal"
-STEP_TITLE[17]="Wallpaper"
+STEP_TITLE[11]="Zed Editor"
+STEP_TITLE[12]="Cleanup"
+STEP_TITLE[13]="Claude Code"
+STEP_TITLE[14]="GitHub Copilot CLI"
+STEP_TITLE[15]="Warp Terminal"
+STEP_TITLE[16]="Wallpaper"
 
 STEP_DESC[1]="apt update/upgrade"
 STEP_DESC[2]="mesa, intel media, ubuntu-drivers"
@@ -82,13 +80,12 @@ STEP_DESC[7]="docker-ce + compose plugin"
 STEP_DESC[8]="git curl wget vim fish starship gh asdf"
 STEP_DESC[9]="fish config + python/node via asdf"
 STEP_DESC[10]="download and install latest JetBrains Mono"
-STEP_DESC[11]="download and install latest JetBrains Toolbox"
-STEP_DESC[12]="install Zed"
-STEP_DESC[13]="apt/brew cleanup"
-STEP_DESC[14]="install Claude Code for current user"
-STEP_DESC[15]="install GitHub Copilot CLI for current user"
-STEP_DESC[16]="install Warp (.deb)"
-STEP_DESC[17]="set GNOME wallpaper"
+STEP_DESC[11]="install Zed"
+STEP_DESC[12]="apt/brew cleanup"
+STEP_DESC[13]="install Claude Code for current user"
+STEP_DESC[14]="install GitHub Copilot CLI for current user"
+STEP_DESC[15]="install Warp (.deb)"
+STEP_DESC[16]="set GNOME wallpaper"
 
 run_step() {
   local n="$1"
@@ -314,37 +311,11 @@ step_10() {
 }
 
 step_11() {
-  local toolbox_tgz="$TMP_ROOT/jetbrains-toolbox.tar.gz"
-  local toolbox_extract="$TMP_ROOT/toolbox"
-  local toolbox_root
-  local toolbox_install="$REAL_HOME/.local/share/JetBrains/Toolbox"
-  local toolbox_bin="$toolbox_install/bin/jetbrains-toolbox"
-
-  mkdir -p "$toolbox_extract"
-  curl -fL "$JETBRAINS_TOOLBOX_URL" -o "$toolbox_tgz"
-  tar -xzf "$toolbox_tgz" -C "$toolbox_extract"
-
-  toolbox_root="$(compgen -G "$toolbox_extract/jetbrains-toolbox-*" | head -n 1 || true)"
-  if [[ -z "$toolbox_root" || ! -x "$toolbox_root/bin/jetbrains-toolbox" ]]; then
-    warn "Could not find jetbrains-toolbox binary inside downloaded archive"
-    return
-  fi
-
-  as_user "mkdir -p '$REAL_HOME/.local/share/JetBrains' '$REAL_HOME/.local/bin'"
-  rm -rf "$toolbox_install"
-  mv "$toolbox_root" "$toolbox_install"
-  chown -R "$REAL_USER":"$REAL_USER" "$toolbox_install"
-  as_user "ln -sf '$toolbox_bin' '$REAL_HOME/.local/bin/jetbrains-toolbox'"
-  as_user "nohup '$toolbox_bin' >/dev/null 2>&1 &"
-  info "JetBrains Toolbox installed from latest stable release (first start triggered)"
-}
-
-step_12() {
   as_user 'curl -f https://zed.dev/install.sh | sh'
   info "Zed editor installed"
 }
 
-step_13() {
+step_12() {
   apt autoremove -y
   apt autoclean -y
   if [[ -x "$BREW" ]]; then
@@ -353,17 +324,17 @@ step_13() {
   info "Cleanup complete"
 }
 
-step_14() {
+step_13() {
   as_user 'curl -fsSL https://claude.ai/install.sh | bash'
   info "Claude Code installed for $REAL_USER"
 }
 
-step_15() {
+step_14() {
   as_user 'curl -fsSL https://gh.io/copilot-install | bash'
   info "GitHub Copilot CLI installed for $REAL_USER"
 }
 
-step_16() {
+step_15() {
   local warp_deb="$TMP_ROOT/warp.deb"
   local warp_pkg="deb"
 
@@ -382,7 +353,7 @@ step_16() {
   info "Warp installed/updated"
 }
 
-step_17() {
+step_16() {
   local wallpaper_path="$SCRIPT_DIR/$WALLPAPER_REL_PATH"
   local wallpaper_uri="file://$wallpaper_path"
   local real_uid
@@ -428,7 +399,7 @@ choose_steps() {
   local key
   local current=1
   local all_selected
-  local -i max_step=17
+  local -i max_step=16
   declare -A selected
 
   for i in $(seq 1 "$max_step"); do
@@ -544,7 +515,6 @@ print_summary() {
   echo "  Copilot:    $(as_user 'github-copilot-cli --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Warp:       $(warp-terminal --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Wallpaper:  $(as_user 'gsettings get org.gnome.desktop.background picture-uri' 2>/dev/null || echo 'N/A')"
-  echo "  Toolbox:    $(as_user 'test -x $HOME/.local/bin/jetbrains-toolbox && echo Installed' 2>/dev/null || echo 'N/A')"
   echo "  Zed:        $(as_user '$HOME/.local/bin/zed --version' 2>/dev/null || echo 'N/A')"
   echo ""
 }
