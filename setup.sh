@@ -63,7 +63,7 @@ STEP_TITLE[7]="Docker Engine"
 STEP_TITLE[8]="Userland tools (Homebrew)"
 STEP_TITLE[9]="Shell config + Languages (asdf)"
 STEP_TITLE[10]="JetBrains Mono font"
-STEP_TITLE[11]="Zed Editor"
+STEP_TITLE[11]="VSCode"
 STEP_TITLE[12]="Cleanup"
 STEP_TITLE[13]="Claude Code"
 STEP_TITLE[14]="GitHub Copilot CLI"
@@ -80,7 +80,7 @@ STEP_DESC[7]="docker-ce + compose plugin"
 STEP_DESC[8]="git curl wget vim fish starship gh asdf"
 STEP_DESC[9]="fish config + python/node via asdf"
 STEP_DESC[10]="download and install latest JetBrains Mono"
-STEP_DESC[11]="install Zed"
+STEP_DESC[11]="install VSCode via Snap"
 STEP_DESC[12]="apt/brew cleanup"
 STEP_DESC[13]="install Claude Code for current user"
 STEP_DESC[14]="install GitHub Copilot CLI for current user"
@@ -311,8 +311,13 @@ step_10() {
 }
 
 step_11() {
-  as_user 'curl -f https://zed.dev/install.sh | sh'
-  info "Zed editor installed"
+  if snap list code &>/dev/null 2>&1; then
+    snap refresh code
+    info "VSCode updated via Snap"
+  else
+    snap install code --classic
+    info "VSCode installed via Snap"
+  fi
 }
 
 step_12() {
@@ -515,7 +520,7 @@ print_summary() {
   echo "  Copilot:    $(as_user 'github-copilot-cli --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Warp:       $(warp-terminal --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Wallpaper:  $(as_user 'gsettings get org.gnome.desktop.background picture-uri' 2>/dev/null || echo 'N/A')"
-  echo "  Zed:        $(as_user '$HOME/.local/bin/zed --version' 2>/dev/null || echo 'N/A')"
+  echo "  VSCode:     $(as_user 'code --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo ""
 }
 
