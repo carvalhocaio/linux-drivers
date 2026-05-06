@@ -1,6 +1,6 @@
-# Ubuntu Drivers — Lenovo ThinkPad E14
+# Ubuntu Setup
 
-Setup script for drivers and dev tooling on a Lenovo ThinkPad E14 running Ubuntu.
+Setup script for drivers and dev tooling.
 
 ## What it updates
 
