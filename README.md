@@ -16,7 +16,7 @@ Setup script for drivers and dev tooling on a Lenovo ThinkPad E14 running Ubuntu
 | 8 | **Userland (Brew)** | `git`, `curl`, `wget`, `vim`, `fish`, `starship`, `gh`, `asdf` |
 | 9 | **Shell + asdf** | Fish config, Starship config, Python 3.10.14, Node.js 24.14.0, aicommits |
 | 10 | **Fonts** | JetBrains Mono latest stable (download at runtime) |
-| 11 | **Tools** | Zed editor |
+| 11 | **Tools** | VSCode (via Snap) |
 | 12 | **Cleanup** | Remove orphaned packages and stale caches |
 | 13 | **AI Tooling** | Claude Code installer (current user) |
 | 14 | **AI Tooling** | GitHub Copilot CLI installer (current user) |
