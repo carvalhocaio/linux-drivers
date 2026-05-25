@@ -14,14 +14,13 @@ Setup script for drivers and dev tooling.
 | 6 | **Build + Brew** | `build-essential`, `libssl-dev`, and Homebrew bootstrap/update |
 | 7 | **Docker** | Docker Engine, CLI, containerd, Buildx, Compose plugin |
 | 8 | **Userland (Brew)** | `git`, `curl`, `wget`, `vim`, `fish`, `starship`, `gh`, `asdf` |
-| 9 | **Shell + asdf** | Fish config, Starship config, Python 3.10.14, Node.js 24.14.0, aicommits |
+| 9 | **Shell + asdf** | Fish config, Starship config, Python 3.10.14, Node.js 24.14.0 |
 | 10 | **Fonts** | JetBrains Mono latest stable (download at runtime) |
-| 11 | **Tools** | VSCode (via Snap) |
+| 11 | **Tools** | Zed (via official install script) |
 | 12 | **Cleanup** | Remove orphaned packages and stale caches |
 | 13 | **AI Tooling** | Claude Code installer (current user) |
-| 14 | **AI Tooling** | GitHub Copilot CLI installer (current user) |
-| 15 | **Terminal** | Warp latest `.deb` (download via `app.warp.dev/download?package=deb`) |
-| 16 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
+| 14 | **Terminal** | Warp latest `.deb` (download via `app.warp.dev/download?package=deb`) |
+| 15 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
 
 ## Hardware
 
@@ -60,7 +59,7 @@ sudo ./setup.sh
 
 The script requires root privileges and will prompt for a reboot at the end if one is needed.
 
-Note for step 16 (Wallpaper): this step needs an active graphical login session for the selected user.
+Note for step 15 (Wallpaper): this step needs an active graphical login session for the selected user.
 If no desktop session bus is available yet, the script will skip wallpaper setup and show a warning.
 
 ## Requirements
