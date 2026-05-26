@@ -68,6 +68,7 @@ STEP_TITLE[12]="Cleanup"
 STEP_TITLE[13]="Claude Code"
 STEP_TITLE[14]="Warp Terminal"
 STEP_TITLE[15]="Wallpaper"
+STEP_TITLE[16]="JetBrains Toolbox"
 
 STEP_DESC[1]="apt update/upgrade"
 STEP_DESC[2]="mesa, intel media, ubuntu-drivers"
@@ -84,6 +85,7 @@ STEP_DESC[12]="apt/brew cleanup"
 STEP_DESC[13]="install Claude Code for current user"
 STEP_DESC[14]="install Warp (.deb)"
 STEP_DESC[15]="set GNOME wallpaper"
+STEP_DESC[16]="download and install JetBrains Toolbox"
 
 run_step() {
   local n="$1"
@@ -384,6 +386,40 @@ step_15() {
   fi
 }
 
+step_16() {
+  local toolbox_api="https://data.services.jetbrains.com/products/releases?code=TBA&latest=true&type=release"
+  local toolbox_tar="$TMP_ROOT/jetbrains-toolbox.tar.gz"
+  local toolbox_dir="$TMP_ROOT/jetbrains-toolbox"
+  local local_tarball="$REAL_HOME/Downloads/jetbrains-toolbox-3.4.3.81140.tar.gz"
+  local download_url
+
+  download_url="$(curl -fsSL "$toolbox_api" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+releases = data.get("TBA", [])
+if releases:
+    linux = releases[0].get("downloads", {}).get("linux", {})
+    print(linux.get("link", ""))
+' 2>/dev/null || true)"
+
+  if [[ -n "$download_url" ]]; then
+    curl -fL "$download_url" -o "$toolbox_tar"
+    info "JetBrains Toolbox downloaded from JetBrains"
+  elif [[ -f "$local_tarball" ]]; then
+    cp "$local_tarball" "$toolbox_tar"
+    info "Using local JetBrains Toolbox tarball: $local_tarball"
+  else
+    warn "Could not download or locate JetBrains Toolbox tarball"
+    return
+  fi
+
+  mkdir -p "$toolbox_dir"
+  tar -xzf "$toolbox_tar" -C "$toolbox_dir" --strip-components=1
+  chmod +x "$toolbox_dir/jetbrains-toolbox"
+  as_user "'$toolbox_dir/jetbrains-toolbox' &"
+  info "JetBrains Toolbox launched and installing for $REAL_USER"
+}
+
 choose_steps() {
   local i
   local mark
@@ -391,7 +427,7 @@ choose_steps() {
   local key
   local current=1
   local all_selected
-  local -i max_step=15
+  local -i max_step=16
   declare -A selected
 
   for i in $(seq 1 "$max_step"); do
@@ -507,6 +543,7 @@ print_summary() {
   echo "  Warp:       $(warp-terminal --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Wallpaper:  $(as_user 'gsettings get org.gnome.desktop.background picture-uri' 2>/dev/null || echo 'N/A')"
   echo "  Zed:        $(as_user 'zed --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  JB Toolbox: $(as_user 'ls ~/.local/share/JetBrains/Toolbox/bin/jetbrains-toolbox' 2>/dev/null && echo 'installed' || echo 'N/A')"
   echo ""
 }
 
