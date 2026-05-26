@@ -1,4 +1,4 @@
-# Ubuntu Setup
+# Pop!_OS Setup
 
 Setup script for drivers and dev tooling.
 
@@ -22,6 +22,8 @@ Setup script for drivers and dev tooling.
 | 14 | **Terminal** | Warp latest `.deb` (download via `app.warp.dev/download?package=deb`) |
 | 15 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
 
+> **Note:** Pop!_OS does not ship Snap. All tools are installed via `.deb`, Homebrew, or official install scripts — no Snap dependency anywhere in this script.
+
 ## Hardware
 
 - **GPU:** Intel Iris Xe Graphics (TigerLake-LP GT2)
@@ -36,6 +38,7 @@ Setup script for drivers and dev tooling.
 ```bash
 git clone https://github.com/carvalhocaio/ubuntu-drivers.git
 cd ubuntu-drivers
+git checkout popos
 sudo ./setup.sh
 ```
 
@@ -65,5 +68,5 @@ If no desktop session bus is available yet, the script will skip wallpaper setup
 ## Requirements
 
 - `curl` (installed automatically by the script if missing)
-- `fwupd` and `ubuntu-drivers` (pre-installed on Ubuntu Desktop)
+- `fwupd` and `ubuntu-drivers` (pre-installed on Pop!_OS)
 - `fontconfig` and `unzip` are installed automatically when needed (JetBrains Mono step)

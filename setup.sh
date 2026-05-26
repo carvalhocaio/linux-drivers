@@ -199,10 +199,10 @@ step_7() {
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
 
-  tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+  tee /etc/apt/sources.list.d/docker.sources >/dev/null <<'EOF'
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Suites: noble
 Components: stable
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
@@ -510,7 +510,7 @@ print_summary() {
   echo ""
 }
 
-header "Driver Update — Lenovo ThinkPad E14 (Ubuntu 26.04)"
+header "Driver Update — Lenovo ThinkPad E14 (Pop!_OS 24.04 LTS)"
 choose_steps
 
 TOTAL_STEPS="${#SELECTED_STEPS[@]}"
