@@ -21,6 +21,7 @@ Setup script for drivers and dev tooling.
 | 13 | **AI Tooling** | Claude Code installer (current user) |
 | 14 | **Terminal** | Warp latest `.deb` (download via `app.warp.dev/download?package=deb`) |
 | 15 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
+| 16 | **IDE** | JetBrains Toolbox (latest via API, fallback to local tarball) |
 
 > **Note:** Pop!_OS does not ship Snap. All tools are installed via `.deb`, Homebrew, or official install scripts — no Snap dependency anywhere in this script.
 
