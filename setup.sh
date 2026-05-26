@@ -53,7 +53,7 @@ brew_ensure_pkg() {
 declare -A STEP_TITLE
 declare -A STEP_DESC
 
-STEP_TITLE[1]="Updating system packages (apt)"
+STEP_TITLE[1]="Updating system packages (dnf)"
 STEP_TITLE[2]="Video drivers (Intel Iris Xe / Mesa)"
 STEP_TITLE[3]="Audio drivers (Intel Tiger Lake / PipeWire)"
 STEP_TITLE[4]="Network drivers (Realtek Wi-Fi/Bluetooth/Ethernet)"
@@ -69,8 +69,8 @@ STEP_TITLE[13]="Claude Code"
 STEP_TITLE[14]="Warp Terminal"
 STEP_TITLE[15]="Wallpaper"
 
-STEP_DESC[1]="apt update/upgrade"
-STEP_DESC[2]="mesa, intel media, ubuntu-drivers"
+STEP_DESC[1]="dnf upgrade"
+STEP_DESC[2]="mesa, intel media"
 STEP_DESC[3]="pipewire, alsa, sof firmware"
 STEP_DESC[4]="dkms, bluez"
 STEP_DESC[5]="kernel, microcode, fwupd, thermald"
@@ -80,9 +80,9 @@ STEP_DESC[8]="git curl wget vim fish starship gh asdf"
 STEP_DESC[9]="fish config + python/node via asdf"
 STEP_DESC[10]="download and install latest JetBrains Mono"
 STEP_DESC[11]="install Zed for current user"
-STEP_DESC[12]="apt/brew cleanup"
+STEP_DESC[12]="dnf/brew cleanup"
 STEP_DESC[13]="install Claude Code for current user"
-STEP_DESC[14]="install Warp (.deb)"
+STEP_DESC[14]="install Warp (.rpm)"
 STEP_DESC[15]="set GNOME wallpaper"
 
 run_step() {
@@ -94,44 +94,37 @@ run_step() {
 }
 
 step_1() {
-  apt update
-  apt upgrade -y
+  dnf upgrade -y
   info "System packages updated"
 }
 
 step_2() {
-  apt install -y --only-upgrade \
+  dnf install -y \
     mesa-vulkan-drivers \
-    libgl1-mesa-dri \
-    libglu1-mesa \
-    libegl-mesa0 \
-    libglx-mesa0 \
+    mesa-dri-drivers \
+    mesa-libGLU \
+    mesa-libEGL \
+    mesa-libGL \
     mesa-utils \
-    intel-media-va-driver \
+    intel-media-driver \
     intel-gpu-tools 2>/dev/null || true
-
-  if command -v ubuntu-drivers &>/dev/null; then
-    info "Checking recommended drivers..."
-    ubuntu-drivers install 2>/dev/null || warn "No additional recommended drivers found"
-  fi
   info "Video drivers verified/updated"
 }
 
 step_3() {
-  apt install -y --only-upgrade \
+  dnf install -y \
     pipewire \
-    pipewire-pulse \
+    pipewire-pulseaudio \
     pipewire-alsa \
     wireplumber \
     alsa-utils \
-    alsa-base \
-    firmware-sof-signed \
+    alsa-sof-firmware \
     linux-firmware 2>/dev/null || true
   info "Audio drivers verified/updated"
 }
 
 step_4() {
-  apt install -y --only-upgrade \
+  dnf install -y \
     dkms \
     bluez \
     bluez-tools 2>/dev/null || true
@@ -139,10 +132,9 @@ step_4() {
 }
 
 step_5() {
-  apt install -y --only-upgrade \
-    linux-generic \
+  dnf install -y \
     linux-firmware \
-    intel-microcode \
+    microcode_ctl \
     fwupd \
     tpm2-tools \
     thermald 2>/dev/null || true
@@ -163,21 +155,22 @@ step_5() {
 }
 
 step_6() {
-  apt install -y curl git
-  apt install -y \
+  dnf install -y curl git
+  dnf install -y \
     make \
-    build-essential \
-    libssl-dev \
-    zlib1g-dev \
-    libbz2-dev \
-    libreadline-dev \
-    libsqlite3-dev \
+    gcc \
+    gcc-c++ \
+    openssl-devel \
+    zlib-devel \
+    bzip2-devel \
+    readline-devel \
+    sqlite-devel \
     llvm \
-    libncurses-dev \
-    xz-utils \
-    tk-dev \
-    libffi-dev \
-    liblzma-dev
+    ncurses-devel \
+    xz \
+    tk-devel \
+    libffi-devel \
+    xz-devel
   info "Build dependencies verified/updated"
 
   if [[ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
@@ -193,23 +186,15 @@ step_6() {
 }
 
 step_7() {
-  apt remove -y docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc 2>/dev/null || true
+  dnf remove -y docker docker-client docker-client-latest docker-common docker-latest \
+    docker-latest-logrotate docker-logrotate docker-selinux docker-engine-selinux docker-engine 2>/dev/null || true
 
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-  chmod a+r /etc/apt/keyrings/docker.asc
+  curl -fsSL https://download.docker.com/linux/fedora/docker-ce.repo \
+    -o /etc/yum.repos.d/docker-ce.repo
 
-  tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
+  dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-  apt update
-  apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
+  systemctl enable --now docker
   usermod -aG docker "$REAL_USER"
   info "Docker Engine installed/updated (relogin required for group changes)"
 }
@@ -287,7 +272,7 @@ step_10() {
     return
   fi
 
-  apt install -y fontconfig unzip
+  dnf install -y fontconfig unzip
   release_json="$(curl -fsSL "$JETBRAINS_MONO_API_URL")"
   mono_download_url="$(python3 -c 'import json,sys; d=json.load(sys.stdin); a=next((x for x in d.get("assets",[]) if x.get("name","").startswith("JetBrainsMono-") and x.get("name","").endswith(".zip")), None); print((a or {}).get("browser_download_url",""))' <<< "$release_json")"
 
@@ -313,8 +298,8 @@ step_11() {
 }
 
 step_12() {
-  apt autoremove -y
-  apt autoclean -y
+  dnf autoremove -y
+  dnf clean all
   if [[ -x "$BREW" ]]; then
     brew_run "brew cleanup"
   fi
@@ -327,21 +312,21 @@ step_13() {
 }
 
 step_14() {
-  local warp_deb="$TMP_ROOT/warp.deb"
-  local warp_pkg="deb"
+  local warp_rpm="$TMP_ROOT/warp.rpm"
+  local warp_pkg="rpm"
 
   if [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]]; then
-    warp_pkg="deb_arm64"
+    warp_pkg="rpm_arm64"
   fi
 
-  curl -fL "https://app.warp.dev/download?package=$warp_pkg" -o "$warp_deb"
+  curl -fL "https://app.warp.dev/download?package=$warp_pkg" -o "$warp_rpm"
 
-  if ! dpkg-deb --info "$warp_deb" >/dev/null 2>&1; then
+  if ! rpm -qp "$warp_rpm" >/dev/null 2>&1; then
     warn "Downloaded Warp package is invalid"
     return
   fi
 
-  apt install -y "$warp_deb"
+  dnf install -y "$warp_rpm"
   info "Warp installed/updated"
 }
 
@@ -491,9 +476,9 @@ choose_steps() {
 print_summary() {
   header "Summary"
   echo "  Kernel:     $(uname -r)"
-  echo "  Mesa:       $(dpkg -l libgl1-mesa-dri 2>/dev/null | awk '/^ii/{print $3}')"
+  echo "  Mesa:       $(rpm -q mesa-dri-drivers 2>/dev/null | head -1 || echo 'N/A')"
   echo "  PipeWire:   $(pipewire --version 2>/dev/null | head -1 || echo 'N/A')"
-  echo "  Microcode:  $(dpkg -l intel-microcode 2>/dev/null | awk '/^ii/{print $3}')"
+  echo "  Microcode:  $(rpm -q microcode_ctl 2>/dev/null | head -1 || echo 'N/A')"
   echo "  fwupd:      $(fwupdmgr --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Docker:     $(docker --version 2>/dev/null || echo 'N/A')"
   echo "  Homebrew:   $(brew_run 'brew --version' 2>/dev/null | head -1 || echo 'N/A')"
@@ -510,7 +495,7 @@ print_summary() {
   echo ""
 }
 
-header "Driver Update — Lenovo ThinkPad E14 (Ubuntu 26.04)"
+header "Driver Update — Lenovo ThinkPad E14 (Fedora 44)"
 choose_steps
 
 TOTAL_STEPS="${#SELECTED_STEPS[@]}"

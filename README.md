@@ -1,4 +1,4 @@
-# Ubuntu Setup
+# Fedora Setup
 
 Setup script for drivers and dev tooling.
 
@@ -6,12 +6,12 @@ Setup script for drivers and dev tooling.
 
 | Step | Category | Packages |
 |------|----------|----------|
-| 1 | **System** | All system packages via `apt upgrade` |
-| 2 | **Video** | Mesa, Vulkan, Intel VA-API, `ubuntu-drivers` recommendations |
-| 3 | **Audio** | PipeWire, ALSA, Intel SOF firmware |
+| 1 | **System** | All system packages via `dnf upgrade` |
+| 2 | **Video** | Mesa, Vulkan, Intel VA-API (`intel-media-driver`) |
+| 3 | **Audio** | PipeWire, ALSA, Intel SOF firmware (`alsa-sof-firmware`) |
 | 4 | **Network** | Realtek Wi-Fi/Ethernet firmware, Bluetooth (BlueZ) |
-| 5 | **Security & Firmware** | Kernel, `intel-microcode`, `thermald`, TPM tools, Lenovo firmware via `fwupd` |
-| 6 | **Build + Brew** | `build-essential`, `libssl-dev`, and Homebrew bootstrap/update |
+| 5 | **Security & Firmware** | Kernel firmware, `microcode_ctl`, `thermald`, TPM tools, Lenovo firmware via `fwupd` |
+| 6 | **Build + Brew** | `gcc`, `gcc-c++`, `openssl-devel`, and Homebrew bootstrap/update |
 | 7 | **Docker** | Docker Engine, CLI, containerd, Buildx, Compose plugin |
 | 8 | **Userland (Brew)** | `git`, `curl`, `wget`, `vim`, `fish`, `starship`, `gh`, `asdf` |
 | 9 | **Shell + asdf** | Fish config, Starship config, Python 3.10.14, Node.js 24.14.0 |
@@ -19,7 +19,7 @@ Setup script for drivers and dev tooling.
 | 11 | **Tools** | Zed (via official install script) |
 | 12 | **Cleanup** | Remove orphaned packages and stale caches |
 | 13 | **AI Tooling** | Claude Code installer (current user) |
-| 14 | **Terminal** | Warp latest `.deb` (download via `app.warp.dev/download?package=deb`) |
+| 14 | **Terminal** | Warp latest `.rpm` (download via `app.warp.dev/download?package=rpm`) |
 | 15 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
 
 ## Hardware
@@ -36,6 +36,7 @@ Setup script for drivers and dev tooling.
 ```bash
 git clone https://github.com/carvalhocaio/ubuntu-drivers.git
 cd ubuntu-drivers
+git checkout fedora
 sudo ./setup.sh
 ```
 
@@ -65,5 +66,5 @@ If no desktop session bus is available yet, the script will skip wallpaper setup
 ## Requirements
 
 - `curl` (installed automatically by the script if missing)
-- `fwupd` and `ubuntu-drivers` (pre-installed on Ubuntu Desktop)
+- `fwupd` (pre-installed on Fedora Workstation)
 - `fontconfig` and `unzip` are installed automatically when needed (JetBrains Mono step)
