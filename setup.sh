@@ -115,7 +115,6 @@ step_2() {
     mesa-utils \
     mesa-va-drivers \
     intel-media-va-driver \
-    intel-media-va-driver-non-free \
     intel-gpu-tools \
     vainfo || warn "Some video packages failed to install — check apt output above"
 
