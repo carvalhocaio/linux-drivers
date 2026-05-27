@@ -252,6 +252,11 @@ step_8() {
   fi
   chsh -s "$BREW_FISH" "$REAL_USER"
   info "Fish shell set as default (Homebrew version)"
+
+  as_user "git config --global user.email 'caiocarvalho.py@gmail.com'"
+  as_user "git config --global user.name 'Caio Carvalho'"
+  as_user "git config --global github.user 'carvalhocaio'"
+  info "Git global config set"
 }
 
 step_9() {
