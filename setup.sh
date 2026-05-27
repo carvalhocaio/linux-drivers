@@ -66,8 +66,10 @@ STEP_TITLE[10]="JetBrains Mono font"
 STEP_TITLE[11]="Zed"
 STEP_TITLE[12]="Cleanup"
 STEP_TITLE[13]="Claude Code"
-STEP_TITLE[14]="Warp Terminal"
-STEP_TITLE[15]="Wallpaper"
+STEP_TITLE[14]="OpenCode"
+STEP_TITLE[15]="gh CLI"
+STEP_TITLE[16]="Warp Terminal"
+STEP_TITLE[17]="Wallpaper"
 
 STEP_DESC[1]="dnf upgrade"
 STEP_DESC[2]="mesa, intel media"
@@ -76,14 +78,16 @@ STEP_DESC[4]="dkms, bluez"
 STEP_DESC[5]="kernel, microcode, fwupd, thermald"
 STEP_DESC[6]="build deps + install Homebrew"
 STEP_DESC[7]="docker-ce + compose plugin"
-STEP_DESC[8]="git curl wget vim fish starship gh asdf"
+STEP_DESC[8]="git curl wget vim fish starship asdf"
 STEP_DESC[9]="fish config + python/node via asdf"
 STEP_DESC[10]="download and install latest JetBrains Mono"
 STEP_DESC[11]="install Zed for current user"
 STEP_DESC[12]="dnf/brew cleanup"
 STEP_DESC[13]="install Claude Code for current user"
-STEP_DESC[14]="install Warp (.rpm)"
-STEP_DESC[15]="set GNOME wallpaper"
+STEP_DESC[14]="install OpenCode for current user"
+STEP_DESC[15]="install gh CLI via official dnf repo"
+STEP_DESC[16]="install Warp (.rpm)"
+STEP_DESC[17]="set GNOME wallpaper"
 
 run_step() {
   local n="$1"
@@ -201,7 +205,7 @@ step_7() {
 
 step_8() {
   local pkg
-  for pkg in git curl wget vim fish starship gh asdf; do
+  for pkg in git curl wget vim fish starship asdf; do
     brew_ensure_pkg "$pkg"
   done
 
@@ -312,6 +316,18 @@ step_13() {
 }
 
 step_14() {
+  as_user 'curl -fsSL https://opencode.ai/install | bash'
+  info "OpenCode installed for $REAL_USER"
+}
+
+step_15() {
+  curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo \
+    -o /etc/yum.repos.d/gh-cli.repo
+  dnf install -y gh
+  info "gh CLI installed"
+}
+
+step_16() {
   local warp_rpm="$TMP_ROOT/warp.rpm"
   local warp_pkg="rpm"
 
@@ -330,7 +346,7 @@ step_14() {
   info "Warp installed/updated"
 }
 
-step_15() {
+step_17() {
   local wallpaper_path="$SCRIPT_DIR/$WALLPAPER_REL_PATH"
   local wallpaper_uri="file://$wallpaper_path"
   local real_uid
@@ -376,7 +392,7 @@ choose_steps() {
   local key
   local current=1
   local all_selected
-  local -i max_step=15
+  local -i max_step=17
   declare -A selected
 
   for i in $(seq 1 "$max_step"); do
@@ -487,8 +503,9 @@ print_summary() {
   echo "  Starship:   $(brew_run 'starship --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Python:     $(brew_run '$HOME/.asdf/shims/python --version' 2>/dev/null || echo 'N/A')"
   echo "  Node.js:    $(brew_run '$HOME/.asdf/shims/node --version' 2>/dev/null || echo 'N/A')"
-  echo "  gh:         $(brew_run 'gh --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  gh:         $(gh --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Claude:     $(as_user 'claude --version' 2>/dev/null | head -1 || echo 'N/A')"
+  echo "  OpenCode:   $(as_user 'opencode --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Warp:       $(warp-terminal --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Wallpaper:  $(as_user 'gsettings get org.gnome.desktop.background picture-uri' 2>/dev/null || echo 'N/A')"
   echo "  Zed:        $(as_user 'zed --version' 2>/dev/null | head -1 || echo 'N/A')"
