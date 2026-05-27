@@ -1,31 +1,31 @@
-# Pop!_OS Setup
+# Arch Linux Setup
 
 Setup script for drivers and dev tooling.
 
 ## What it updates
 
-| Step | Category | Packages |
-|------|----------|----------|
-| 1 | **System** | All system packages via `apt upgrade` |
-| 2 | **Video** | Mesa, Vulkan, Intel VA-API, `ubuntu-drivers` recommendations |
-| 3 | **Audio** | PipeWire, ALSA, Intel SOF firmware |
-| 4 | **Network** | Realtek Wi-Fi/Ethernet firmware, Bluetooth (BlueZ) |
-| 5 | **Security & Firmware** | `intel-microcode`, `thermald`, TPM tools, Lenovo firmware via `fwupd` |
-| 6 | **Build + Brew** | `build-essential`, `libssl-dev`, and Homebrew bootstrap (manual clone method) |
-| 7 | **Docker** | Docker Engine, CLI, containerd, Buildx, Compose plugin (idempotent; adds user to `docker` group) |
+| Step | Category | Packages / Method |
+|------|----------|-------------------|
+| 1 | **System** | Full system update via `pacman -Syu` |
+| 2 | **Video** | `mesa`, `vulkan-intel`, `intel-media-driver`, `libva-mesa-driver`, `libva-utils`, `intel-gpu-tools` |
+| 3 | **Audio** | `pipewire`, `pipewire-pulse`, `pipewire-alsa`, `wireplumber`, `alsa-utils`, `sof-firmware`; enables PipeWire user services |
+| 4 | **Network** | `dkms`, `bluez`, `bluez-utils`; enables `bluetooth.service` |
+| 5 | **Security & Firmware** | `intel-ucode`, `tpm2-tools`, `fwupd`; `thermald` from AUR; Lenovo firmware via `fwupd` |
+| 6 | **Build + Brew** | `base-devel` and Homebrew bootstrap (manual clone method) |
+| 7 | **Docker** | `docker`, `docker-buildx`, `docker-compose` via pacman; enables `docker.service`; adds user to `docker` group |
 | 8 | **Userland (Brew)** | `git`, `curl`, `wget`, `vim`, `fish`, `starship`, `asdf` |
 | 9 | **Shell + asdf** | Fish config, Starship config, Python 3.12.10, Node.js 24.14.0 |
 | 10 | **Fonts** | JetBrains Mono latest stable (download at runtime) |
 | 11 | **Tools** | Zed (via official install script) |
-| 12 | **Cleanup** | Remove orphaned packages and stale caches |
+| 12 | **Cleanup** | Remove orphaned packages (`pacman -Rns`) and clean cache (`pacman -Sc`) |
 | 13 | **AI Tooling** | Claude Code installer (current user) |
 | 14 | **AI Tooling** | OpenCode installer (current user) |
-| 15 | **CLI** | gh CLI via official apt repo (`cli.github.com`) |
-| 16 | **Terminal** | Warp latest `.deb` (download via `app.warp.dev/download?package=deb`) |
+| 15 | **CLI** | `github-cli` via pacman |
+| 16 | **Terminal** | `warp-terminal` from AUR |
 | 17 | **IDE** | JetBrains Toolbox (latest via API, fallback to local tarball) |
 | 18 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
 
-> **Note:** Pop!_OS does not ship Snap. All tools are installed via `.deb`, Homebrew, or official install scripts — no Snap dependency anywhere in this script.
+> **Note:** AUR packages (`thermald`, `warp-terminal`) are built using a standalone `build_and_install_aur()` helper — no external AUR helper (yay, paru) required. The PKGBUILD is compiled as the real user and installed via `pacman -U` as root.
 
 ## Hardware
 
@@ -41,7 +41,7 @@ Setup script for drivers and dev tooling.
 ```bash
 git clone https://github.com/carvalhocaio/linux-drivers.git
 cd linux-drivers
-git checkout popos
+git checkout arch
 sudo bash setup.sh
 ```
 
@@ -63,7 +63,7 @@ chmod +x setup.sh
 sudo bash setup.sh
 ```
 
-The script requires root privileges and will prompt for a reboot at the end if one is needed.
+The script requires root privileges and will prompt for a reboot at the end if the running kernel differs from the installed one.
 
 **Note — step 7 (Docker):** after the script adds your user to the `docker` group, run `newgrp docker` in the current terminal or open a new session before using Docker without `sudo`.
 
@@ -77,6 +77,6 @@ Then open a new terminal session for the change to apply.
 
 ## Requirements
 
-- `curl` (installed automatically by the script if missing)
-- `fwupd` (pre-installed on Pop!_OS)
+- `curl` and `git` (installed automatically by the script via `base-devel` step if missing)
+- `fwupd` (installed in step 5)
 - `fontconfig` and `unzip` are installed automatically when needed (JetBrains Mono step)
