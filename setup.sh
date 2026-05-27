@@ -383,11 +383,21 @@ step_11() {
   if [[ -f "$fish_config" ]] && ! grep -qF ".local/bin" "$fish_config"; then
     sed -i 's|set -gx PATH \$HOME/.asdf/shims|set -gx PATH $HOME/.asdf/shims $HOME/.local/bin|' "$fish_config" || true
     info "~/.local/bin added to fish PATH (required for Zed)"
-  else
-    info "~/.local/bin already in fish PATH — Zed available as 'zed' in new fish terminals"
   fi
 
-  info "Zed installed for $REAL_USER"
+  # Expose ~/.local/bin to graphical (non-login) sessions via systemd environment.d
+  local env_d="$REAL_HOME/.config/environment.d"
+  as_user "mkdir -p '$env_d'"
+  if [[ ! -f "$env_d/local-bin.conf" ]]; then
+    printf 'PATH=%s/.local/bin:$PATH\n' "$REAL_HOME" > "$env_d/local-bin.conf"
+    chown "$REAL_USER":"$REAL_USER" "$env_d/local-bin.conf"
+    info "~/.local/bin registered in environment.d for graphical sessions"
+  fi
+
+  # Refresh GNOME app database so Zed appears in the launcher immediately
+  as_user "update-desktop-database '$REAL_HOME/.local/share/applications'" 2>/dev/null || true
+
+  info "Zed installed for $REAL_USER — available in launcher after re-login"
 }
 
 step_12() {
@@ -500,15 +510,27 @@ step_18() {
     fi
   fi
 
-  # No active D-Bus session (script runs as root): register an autostart entry
-  # that applies the wallpaper on first login and then removes itself.
+  # No active D-Bus session (script runs as root): write a helper script and
+  # an autostart entry that applies the wallpaper on first login and removes both.
   local autostart_dir="$REAL_HOME/.config/autostart"
+  local helper="$REAL_HOME/.config/set-wallpaper.sh"
   as_user "mkdir -p '$autostart_dir'"
+
+  cat > "$helper" <<EOF
+#!/bin/bash
+gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'
+gsettings set org.gnome.desktop.background picture-uri-dark '$wallpaper_uri'
+gsettings set org.gnome.desktop.background picture-options '$WALLPAPER_OPTIONS'
+rm -f '$autostart_dir/set-wallpaper.desktop' '$helper'
+EOF
+  chmod +x "$helper"
+  chown "$REAL_USER":"$REAL_USER" "$helper"
+
   cat > "$autostart_dir/set-wallpaper.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Set Wallpaper
-Exec=bash -c "gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'; gsettings set org.gnome.desktop.background picture-uri-dark '$wallpaper_uri'; gsettings set org.gnome.desktop.background picture-options '$WALLPAPER_OPTIONS'; rm -f '$autostart_dir/set-wallpaper.desktop'"
+Exec=$helper
 X-GNOME-Autostart-enabled=true
 NoDisplay=true
 EOF
