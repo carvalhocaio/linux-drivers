@@ -50,10 +50,47 @@ brew_ensure_pkg() {
   fi
 }
 
+pacman_ensure_pkg() {
+  local pkg="$1"
+  if pacman -Qi "$pkg" &>/dev/null; then
+    info "$pkg already installed"
+  else
+    pacman -S --noconfirm --needed "$pkg"
+    info "$pkg installed"
+  fi
+}
+
+# Builds an AUR package as the real user and installs the resulting .pkg.tar.* as root.
+# Works without an AUR helper — requires only git and base-devel to be present.
+build_and_install_aur() {
+  local pkg="$1"
+  local build_dir="$TMP_ROOT/aur_${pkg}"
+
+  if pacman -Qi "$pkg" &>/dev/null; then
+    info "$pkg already installed (AUR)"
+    return
+  fi
+
+  info "Building $pkg from AUR..."
+  as_user "git clone 'https://aur.archlinux.org/${pkg}.git' '${build_dir}'"
+  as_user "cd '${build_dir}' && makepkg -f --noconfirm --skippgpcheck"
+
+  local pkg_file
+  pkg_file="$(find "${build_dir}" -maxdepth 1 -name '*.pkg.tar.*' | sort | head -1)"
+
+  if [[ -z "$pkg_file" ]]; then
+    warn "Could not build AUR package: $pkg"
+    return 1
+  fi
+
+  pacman -U --noconfirm "$pkg_file"
+  info "$pkg installed from AUR"
+}
+
 declare -A STEP_TITLE
 declare -A STEP_DESC
 
-STEP_TITLE[1]="Updating system packages (apt)"
+STEP_TITLE[1]="Updating system packages (pacman)"
 STEP_TITLE[2]="Video drivers (Intel Iris Xe / Mesa)"
 STEP_TITLE[3]="Audio drivers (Intel Tiger Lake / PipeWire)"
 STEP_TITLE[4]="Network drivers (Realtek Wi-Fi/Bluetooth/Ethernet)"
@@ -72,22 +109,22 @@ STEP_TITLE[16]="Warp Terminal"
 STEP_TITLE[17]="JetBrains Toolbox"
 STEP_TITLE[18]="Wallpaper"
 
-STEP_DESC[1]="apt update/upgrade"
-STEP_DESC[2]="mesa, intel media, ubuntu-drivers"
-STEP_DESC[3]="pipewire, alsa, sof firmware"
-STEP_DESC[4]="dkms, bluez"
-STEP_DESC[5]="kernel, microcode, fwupd, thermald"
-STEP_DESC[6]="build deps + install Homebrew"
-STEP_DESC[7]="docker-ce + compose plugin"
+STEP_DESC[1]="pacman -Syu"
+STEP_DESC[2]="mesa, vulkan-intel, intel-media-driver, libva"
+STEP_DESC[3]="pipewire, alsa-utils, sof-firmware"
+STEP_DESC[4]="dkms, bluez, bluez-utils"
+STEP_DESC[5]="linux-firmware, intel-ucode, fwupd, thermald (AUR)"
+STEP_DESC[6]="base-devel + install Homebrew"
+STEP_DESC[7]="docker + docker-compose + docker-buildx"
 STEP_DESC[8]="git curl wget vim fish starship asdf"
 STEP_DESC[9]="fish config + python/node via asdf"
 STEP_DESC[10]="download and install latest JetBrains Mono"
 STEP_DESC[11]="install Zed for current user"
-STEP_DESC[12]="apt/brew cleanup"
+STEP_DESC[12]="pacman/brew cleanup"
 STEP_DESC[13]="install Claude Code for current user"
 STEP_DESC[14]="install OpenCode for current user"
-STEP_DESC[15]="install gh CLI via official apt repo"
-STEP_DESC[16]="install Warp (.deb)"
+STEP_DESC[15]="install github-cli via pacman"
+STEP_DESC[16]="install warp-terminal (AUR)"
 STEP_DESC[17]="download and install JetBrains Toolbox"
 STEP_DESC[18]="set GNOME wallpaper"
 
@@ -100,28 +137,23 @@ run_step() {
 }
 
 step_1() {
-  apt update
-  apt upgrade -y
+  pacman -Syu --noconfirm
   info "System packages updated"
 }
 
 step_2() {
-  apt install -y \
-    mesa-vulkan-drivers \
-    libgl1-mesa-dri \
-    libglu1-mesa \
-    libegl-mesa0 \
-    libglx-mesa0 \
-    mesa-utils \
-    mesa-va-drivers \
-    intel-media-va-driver \
-    intel-gpu-tools \
-    vainfo || warn "Some video packages failed to install — check apt output above"
-
-  if command -v ubuntu-drivers &>/dev/null; then
-    info "Checking recommended drivers..."
-    ubuntu-drivers install 2>/dev/null || warn "No additional recommended drivers found"
-  fi
+  local pkgs=(
+    mesa
+    mesa-utils
+    vulkan-intel
+    intel-media-driver
+    libva-mesa-driver
+    libva-utils
+    intel-gpu-tools
+  )
+  for pkg in "${pkgs[@]}"; do
+    pacman_ensure_pkg "$pkg"
+  done
 
   if command -v vainfo &>/dev/null; then
     info "VA-API status:"
@@ -132,33 +164,49 @@ step_2() {
 }
 
 step_3() {
-  apt install -y --only-upgrade \
-    pipewire \
-    pipewire-pulse \
-    pipewire-alsa \
-    wireplumber \
-    alsa-utils \
-    alsa-base \
-    firmware-sof-signed \
-    linux-firmware 2>/dev/null || true
+  local pkgs=(
+    pipewire
+    pipewire-pulse
+    pipewire-alsa
+    wireplumber
+    alsa-utils
+    sof-firmware
+    linux-firmware
+  )
+  for pkg in "${pkgs[@]}"; do
+    pacman_ensure_pkg "$pkg"
+  done
+
+  as_user "systemctl --user enable --now pipewire pipewire-pulse wireplumber 2>/dev/null || true"
   info "Audio drivers verified/updated"
 }
 
 step_4() {
-  apt install -y --only-upgrade \
-    dkms \
-    bluez \
-    bluez-tools 2>/dev/null || true
+  local pkgs=(
+    dkms
+    bluez
+    bluez-utils
+  )
+  for pkg in "${pkgs[@]}"; do
+    pacman_ensure_pkg "$pkg"
+  done
+
+  systemctl enable --now bluetooth 2>/dev/null || true
   info "Network drivers verified/updated"
 }
 
 step_5() {
-  apt install -y --only-upgrade \
-    linux-firmware \
-    intel-microcode \
-    fwupd \
-    tpm2-tools \
-    thermald 2>/dev/null || true
+  local pkgs=(
+    linux-firmware
+    intel-ucode
+    fwupd
+    tpm2-tools
+  )
+  for pkg in "${pkgs[@]}"; do
+    pacman_ensure_pkg "$pkg"
+  done
+
+  build_and_install_aur "thermald"
 
   if systemctl is-enabled thermald &>/dev/null; then
     systemctl start thermald 2>/dev/null || true
@@ -176,21 +224,7 @@ step_5() {
 }
 
 step_6() {
-  apt install -y curl git
-  apt install -y \
-    make \
-    build-essential \
-    libssl-dev \
-    zlib1g-dev \
-    libbz2-dev \
-    libreadline-dev \
-    libsqlite3-dev \
-    llvm \
-    libncurses-dev \
-    xz-utils \
-    tk-dev \
-    libffi-dev \
-    liblzma-dev
+  pacman -S --noconfirm --needed base-devel curl git
   info "Build dependencies verified/updated"
 
   if [[ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
@@ -218,27 +252,14 @@ step_6() {
 }
 
 step_7() {
-  if ! dpkg -s docker-ce &>/dev/null; then
-    apt remove -y docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc 2>/dev/null || true
-
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-    chmod a+r /etc/apt/keyrings/docker.asc
-
-    tee /etc/apt/sources.list.d/docker.sources >/dev/null <<'EOF'
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: noble
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-
-    apt update
-    apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    info "Docker Engine installed"
+  if ! pacman -Qi docker &>/dev/null; then
+    pacman -S --noconfirm docker docker-buildx docker-compose
+    info "Docker installed"
   else
-    info "Docker CE already installed — skipping reinstall"
+    info "Docker already installed — skipping reinstall"
   fi
+
+  systemctl enable --now docker 2>/dev/null || true
 
   if ! id -nG "$REAL_USER" 2>/dev/null | grep -qw docker; then
     usermod -aG docker "$REAL_USER"
@@ -326,7 +347,9 @@ step_10() {
     return
   fi
 
-  apt install -y fontconfig unzip
+  pacman_ensure_pkg "fontconfig"
+  pacman_ensure_pkg "unzip"
+
   release_json="$(curl -fsSL "$JETBRAINS_MONO_API_URL")"
   mono_download_url="$(python3 -c 'import json,sys; d=json.load(sys.stdin); a=next((x for x in d.get("assets",[]) if x.get("name","").startswith("JetBrainsMono-") and x.get("name","").endswith(".zip")), None); print((a or {}).get("browser_download_url",""))' <<< "$release_json")"
 
@@ -357,8 +380,12 @@ step_11() {
 }
 
 step_12() {
-  apt autoremove -y
-  apt autoclean -y
+  local orphans
+  orphans="$(pacman -Qtdq 2>/dev/null || true)"
+  if [[ -n "$orphans" ]]; then
+    pacman -Rns --noconfirm $orphans
+  fi
+  pacman -Sc --noconfirm
   if [[ -x "$BREW" ]]; then
     brew_run "brew cleanup"
   fi
@@ -368,7 +395,6 @@ step_12() {
 step_13() {
   as_user 'curl -fsSL https://claude.ai/install.sh | bash'
 
-  # The installer places the binary in ~/.local/bin — ensure it's in Fish PATH
   if ! grep -qF ".local/bin" "$REAL_HOME/.config/fish/config.fish" 2>/dev/null; then
     sed -i 's|set -gx PATH \$HOME/.asdf/shims|set -gx PATH $HOME/.asdf/shims $HOME/.local/bin|' \
       "$REAL_HOME/.config/fish/config.fish" 2>/dev/null || true
@@ -383,33 +409,12 @@ step_14() {
 }
 
 step_15() {
-  mkdir -p -m 755 /etc/apt/keyrings
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-    -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
-  chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-    | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-  apt update
-  apt install -y gh
+  pacman_ensure_pkg "github-cli"
   info "gh CLI installed"
 }
 
 step_16() {
-  local warp_deb="$TMP_ROOT/warp.deb"
-  local warp_pkg="deb"
-
-  if [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]]; then
-    warp_pkg="deb_arm64"
-  fi
-
-  curl -fL "https://app.warp.dev/download?package=$warp_pkg" -o "$warp_deb"
-
-  if ! dpkg-deb --info "$warp_deb" >/dev/null 2>&1; then
-    warn "Downloaded Warp package is invalid"
-    return
-  fi
-
-  apt install -y "$warp_deb"
+  build_and_install_aur "warp-terminal"
   info "Warp installed/updated"
 }
 
@@ -598,9 +603,9 @@ choose_steps() {
 print_summary() {
   header "Summary"
   echo "  Kernel:     $(uname -r)"
-  echo "  Mesa:       $(dpkg -l libgl1-mesa-dri 2>/dev/null | awk '/^ii/{print $3}')"
+  echo "  Mesa:       $(pacman -Qi mesa 2>/dev/null | awk '/^Version/{print $3}' || echo 'N/A')"
   echo "  PipeWire:   $(pipewire --version 2>/dev/null | head -1 || echo 'N/A')"
-  echo "  Microcode:  $(dpkg -l intel-microcode 2>/dev/null | awk '/^ii/{print $3}')"
+  echo "  Microcode:  $(pacman -Qi intel-ucode 2>/dev/null | awk '/^Version/{print $3}' || echo 'N/A')"
   echo "  fwupd:      $(fwupdmgr --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Docker:     $(docker --version 2>/dev/null || echo 'N/A')"
   echo "  Homebrew:   $(brew_run 'brew --version' 2>/dev/null | head -1 || echo 'N/A')"
@@ -619,7 +624,7 @@ print_summary() {
   echo ""
 }
 
-header "Driver Update — Lenovo ThinkPad E14 (Pop!_OS 24.04 LTS)"
+header "Driver Update — Lenovo ThinkPad E14 (Arch Linux)"
 choose_steps
 
 TOTAL_STEPS="${#SELECTED_STEPS[@]}"
@@ -631,8 +636,10 @@ done
 
 print_summary
 
-if [[ -f /var/run/reboot-required ]]; then
-  warn "Reboot required to apply all updates."
+RUNNING_KERNEL="$(uname -r)"
+INSTALLED_KERNEL="$(pacman -Q linux 2>/dev/null | awk '{print $2}' || true)"
+if [[ -n "$INSTALLED_KERNEL" && "$RUNNING_KERNEL" != "${INSTALLED_KERNEL%.arch*}"* ]]; then
+  warn "Kernel updated (running: $RUNNING_KERNEL). A reboot is recommended."
   read -rp "Reboot now? [y/N]: " answer
   if [[ "${answer,,}" == "y" ]]; then
     reboot
