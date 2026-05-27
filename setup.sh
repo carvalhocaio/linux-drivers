@@ -146,7 +146,6 @@ step_4() {
 
 step_5() {
   apt install -y --only-upgrade \
-    linux-generic \
     linux-firmware \
     intel-microcode \
     fwupd \
@@ -187,11 +186,23 @@ step_6() {
   info "Build dependencies verified/updated"
 
   if [[ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
-    rm -rf /home/linuxbrew/.linuxbrew
-    sudo -u "$REAL_USER" NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    info "Installing Homebrew (manual method)..."
+    mkdir -p /home/linuxbrew/.linuxbrew
+    chown -R "$REAL_USER":"$REAL_USER" /home/linuxbrew
+    sudo -u "$REAL_USER" git clone https://github.com/Homebrew/brew /home/linuxbrew/.linuxbrew/Homebrew
+    mkdir -p /home/linuxbrew/.linuxbrew/bin
+    ln -sf /home/linuxbrew/.linuxbrew/Homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew
+    sudo -u "$REAL_USER" bash -c "eval \"\$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\" && brew update --force --quiet"
+    chmod -R go-w /home/linuxbrew/.linuxbrew/share/zsh 2>/dev/null || true
     info "Homebrew installed"
   else
     info "Homebrew already installed"
+  fi
+
+  if ! grep -qF "linuxbrew" "$REAL_HOME/.bashrc" 2>/dev/null; then
+    echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> "$REAL_HOME/.bashrc"
+    chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.bashrc" 2>/dev/null || true
+    info "Homebrew added to .bashrc"
   fi
 
   brew_run "brew update"
@@ -199,13 +210,14 @@ step_6() {
 }
 
 step_7() {
-  apt remove -y docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc 2>/dev/null || true
+  if ! dpkg -s docker-ce &>/dev/null; then
+    apt remove -y docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc 2>/dev/null || true
 
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-  chmod a+r /etc/apt/keyrings/docker.asc
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
 
-  tee /etc/apt/sources.list.d/docker.sources >/dev/null <<'EOF'
+    tee /etc/apt/sources.list.d/docker.sources >/dev/null <<'EOF'
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
 Suites: noble
@@ -213,11 +225,19 @@ Components: stable
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
 
-  apt update
-  apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    apt update
+    apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    info "Docker Engine installed"
+  else
+    info "Docker CE already installed — skipping reinstall"
+  fi
 
-  usermod -aG docker "$REAL_USER"
-  info "Docker Engine installed/updated (relogin required for group changes)"
+  if ! id -nG "$REAL_USER" 2>/dev/null | grep -qw docker; then
+    usermod -aG docker "$REAL_USER"
+    warn "User $REAL_USER added to docker group — run 'newgrp docker' or re-login to use Docker without sudo"
+  else
+    info "User $REAL_USER already in docker group"
+  fi
 }
 
 step_8() {
@@ -241,7 +261,7 @@ step_9() {
 if status is-interactive
     eval (/home/linuxbrew/.linuxbrew/bin/brew shellenv)
     starship init fish | source
-    set -gx PATH $HOME/.asdf/shims $PATH
+    set -gx PATH $HOME/.asdf/shims $HOME/.local/bin $PATH
 end
 FISHEOF
   chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.config/fish/config.fish"
@@ -268,7 +288,7 @@ STAREOF
 
   brew_run "asdf plugin add python || true"
   brew_run "asdf plugin add nodejs || true"
-  brew_run "asdf install python 3.10.14 && asdf set --home python 3.10.14"
+  brew_run "asdf install python 3.12.10 && asdf set --home python 3.12.10"
   brew_run "asdf install nodejs 24.14.0 && asdf set --home nodejs 24.14.0"
 
   if brew_run "node --version >/dev/null && npm --version >/dev/null"; then
@@ -310,7 +330,12 @@ step_10() {
   cp "$font_extract"/fonts/ttf/*.ttf "$font_dest/"
   chown "$REAL_USER":"$REAL_USER" "$font_dest"/*.ttf
   as_user "fc-cache -f '$REAL_HOME/.local/share/fonts'"
-  info "JetBrains Mono installed from latest stable release"
+
+  if as_user "fc-list | grep -qi 'JetBrains Mono'" 2>/dev/null; then
+    info "JetBrains Mono installed and recognized by font system"
+  else
+    info "JetBrains Mono installed (font cache still refreshing)"
+  fi
 }
 
 step_11() {
@@ -329,7 +354,14 @@ step_12() {
 
 step_13() {
   as_user 'curl -fsSL https://claude.ai/install.sh | bash'
-  info "Claude Code installed for $REAL_USER"
+
+  # The installer places the binary in ~/.local/bin — ensure it's in Fish PATH
+  if ! grep -qF ".local/bin" "$REAL_HOME/.config/fish/config.fish" 2>/dev/null; then
+    sed -i 's|set -gx PATH \$HOME/.asdf/shims|set -gx PATH $HOME/.asdf/shims $HOME/.local/bin|' \
+      "$REAL_HOME/.config/fish/config.fish" 2>/dev/null || true
+  fi
+
+  info "Claude Code installed for $REAL_USER (available in new Fish terminals)"
 }
 
 step_14() {
@@ -425,19 +457,24 @@ step_18() {
   session_bus="$runtime_dir/bus"
 
   if [[ ! -S "$session_bus" ]]; then
-    warn "Desktop session bus not found for $REAL_USER; log in graphically and run this step again"
+    warn "No active desktop session found for $REAL_USER"
+    warn "Set the wallpaper manually after login:"
+    warn "  gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'"
     return
   fi
 
-  as_user "export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'; gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'"
-  as_user "export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'; gsettings set org.gnome.desktop.background picture-uri-dark '$wallpaper_uri'"
-  as_user "export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'; gsettings set org.gnome.desktop.background picture-options '$WALLPAPER_OPTIONS'"
+  local env_prefix="export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'"
 
-  current_uri="$(as_user "export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'; gsettings get org.gnome.desktop.background picture-uri" 2>/dev/null || true)"
-  if [[ "$current_uri" == "'$wallpaper_uri'" ]]; then
+  as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'" || true
+  as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-uri-dark '$wallpaper_uri'" || true
+  as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-options '$WALLPAPER_OPTIONS'" || true
+
+  current_uri="$(as_user "$env_prefix; gsettings get org.gnome.desktop.background picture-uri" 2>/dev/null || true)"
+  if [[ "$current_uri" == *"$wallpaper_path"* ]]; then
     info "Wallpaper configured for $REAL_USER"
   else
-    warn "Wallpaper could not be confirmed via gsettings"
+    warn "Wallpaper not confirmed — set manually with:"
+    warn "  gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'"
   fi
 }
 

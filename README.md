@@ -10,11 +10,11 @@ Setup script for drivers and dev tooling.
 | 2 | **Video** | Mesa, Vulkan, Intel VA-API, `ubuntu-drivers` recommendations |
 | 3 | **Audio** | PipeWire, ALSA, Intel SOF firmware |
 | 4 | **Network** | Realtek Wi-Fi/Ethernet firmware, Bluetooth (BlueZ) |
-| 5 | **Security & Firmware** | Kernel, `intel-microcode`, `thermald`, TPM tools, Lenovo firmware via `fwupd` |
-| 6 | **Build + Brew** | `build-essential`, `libssl-dev`, and Homebrew bootstrap/update |
-| 7 | **Docker** | Docker Engine, CLI, containerd, Buildx, Compose plugin |
+| 5 | **Security & Firmware** | `intel-microcode`, `thermald`, TPM tools, Lenovo firmware via `fwupd` |
+| 6 | **Build + Brew** | `build-essential`, `libssl-dev`, and Homebrew bootstrap (manual clone method) |
+| 7 | **Docker** | Docker Engine, CLI, containerd, Buildx, Compose plugin (idempotent; adds user to `docker` group) |
 | 8 | **Userland (Brew)** | `git`, `curl`, `wget`, `vim`, `fish`, `starship`, `asdf` |
-| 9 | **Shell + asdf** | Fish config, Starship config, Python 3.10.14, Node.js 24.14.0 |
+| 9 | **Shell + asdf** | Fish config, Starship config, Python 3.12.10, Node.js 24.14.0 |
 | 10 | **Fonts** | JetBrains Mono latest stable (download at runtime) |
 | 11 | **Tools** | Zed (via official install script) |
 | 12 | **Cleanup** | Remove orphaned packages and stale caches |
@@ -39,10 +39,10 @@ Setup script for drivers and dev tooling.
 ### Recommended: via `git clone`
 
 ```bash
-git clone https://github.com/carvalhocaio/ubuntu-drivers.git
-cd ubuntu-drivers
+git clone https://github.com/carvalhocaio/linux-drivers.git
+cd linux-drivers
 git checkout popos
-sudo ./setup.sh
+sudo bash setup.sh
 ```
 
 The script opens an interactive selector in the terminal (steps `1-5` are pre-selected by default):
@@ -60,16 +60,17 @@ You need to grant it manually before running:
 
 ```bash
 chmod +x setup.sh
-sudo ./setup.sh
+sudo bash setup.sh
 ```
 
 The script requires root privileges and will prompt for a reboot at the end if one is needed.
 
-Note for step 18 (Wallpaper): this step needs an active graphical login session for the selected user.
-If no desktop session bus is available yet, the script will skip wallpaper setup and show a warning.
+**Note — step 7 (Docker):** after the script adds your user to the `docker` group, run `newgrp docker` in the current terminal or open a new session before using Docker without `sudo`.
+
+**Note — step 18 (Wallpaper):** requires an active graphical login session. If no desktop session bus is found, the step is skipped with a warning showing the manual `gsettings` command.
 
 ## Requirements
 
 - `curl` (installed automatically by the script if missing)
-- `fwupd` and `ubuntu-drivers` (pre-installed on Pop!_OS)
+- `fwupd` (pre-installed on Pop!_OS)
 - `fontconfig` and `unzip` are installed automatically when needed (JetBrains Mono step)
