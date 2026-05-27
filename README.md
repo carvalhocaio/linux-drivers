@@ -67,6 +67,12 @@ The script requires root privileges and will prompt for a reboot at the end if o
 
 **Note — step 7 (Docker):** after the script adds your user to the `docker` group, run `newgrp docker` in the current terminal or open a new session before using Docker without `sudo`.
 
+**Note — step 8 (Fish shell):** the script sets fish as the default shell via `usermod -s`. If for any reason it doesn't take effect, run manually:
+```bash
+sudo chsh -s /home/linuxbrew/.linuxbrew/bin/fish $USER
+```
+Then open a new terminal session for the change to apply.
+
 **Note — step 18 (Wallpaper):** requires an active graphical login session. If no desktop session bus is found, the step is skipped with a warning showing the manual `gsettings` command.
 
 ## Requirements

@@ -250,7 +250,7 @@ step_8() {
   if ! grep -qF "$BREW_FISH" /etc/shells; then
     echo "$BREW_FISH" >> /etc/shells
   fi
-  chsh -s "$BREW_FISH" "$REAL_USER"
+  usermod -s "$BREW_FISH" "$REAL_USER"
   info "Fish shell set as default (Homebrew version)"
 
   as_user "git config --global user.email 'caiocarvalho.py@gmail.com'"
