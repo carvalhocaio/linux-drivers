@@ -106,20 +106,29 @@ step_1() {
 }
 
 step_2() {
-  apt install -y --only-upgrade \
+  apt install -y \
     mesa-vulkan-drivers \
     libgl1-mesa-dri \
     libglu1-mesa \
     libegl-mesa0 \
     libglx-mesa0 \
     mesa-utils \
+    mesa-va-drivers \
     intel-media-va-driver \
-    intel-gpu-tools 2>/dev/null || true
+    intel-media-va-driver-non-free \
+    intel-gpu-tools \
+    vainfo || warn "Some video packages failed to install — check apt output above"
 
   if command -v ubuntu-drivers &>/dev/null; then
     info "Checking recommended drivers..."
     ubuntu-drivers install 2>/dev/null || warn "No additional recommended drivers found"
   fi
+
+  if command -v vainfo &>/dev/null; then
+    info "VA-API status:"
+    vainfo 2>&1 | grep -E "VAProfile|error|libva" | head -10 || true
+  fi
+
   info "Video drivers verified/updated"
 }
 
