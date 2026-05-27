@@ -320,6 +320,8 @@ disabled = true
 STAREOF
   chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.config/starship.toml"
 
+  pacman_ensure_pkg "tk"
+
   brew_run "asdf plugin add python || true"
   brew_run "asdf plugin add nodejs || true"
   brew_run "asdf install python 3.12.10 && asdf set --home python 3.12.10"
@@ -376,6 +378,15 @@ step_10() {
 
 step_11() {
   as_user 'curl -f https://zed.dev/install.sh | sh'
+
+  local fish_config="$REAL_HOME/.config/fish/config.fish"
+  if [[ -f "$fish_config" ]] && ! grep -qF ".local/bin" "$fish_config"; then
+    sed -i 's|set -gx PATH \$HOME/.asdf/shims|set -gx PATH $HOME/.asdf/shims $HOME/.local/bin|' "$fish_config" || true
+    info "~/.local/bin added to fish PATH (required for Zed)"
+  else
+    info "~/.local/bin already in fish PATH — Zed available as 'zed' in new fish terminals"
+  fi
+
   info "Zed installed for $REAL_USER"
 }
 
@@ -385,6 +396,7 @@ step_12() {
   if [[ -n "$orphans" ]]; then
     pacman -Rns --noconfirm $orphans
   fi
+  find /var/cache/pacman/pkg/ -maxdepth 1 -name 'download-*' -delete 2>/dev/null || true
   pacman -Sc --noconfirm
   if [[ -x "$BREW" ]]; then
     brew_run "brew cleanup"
@@ -458,7 +470,6 @@ step_18() {
   local real_uid
   local runtime_dir
   local session_bus
-  local current_uri
 
   if [[ ! -f "$wallpaper_path" ]]; then
     warn "Wallpaper file not found: $wallpaper_path"
@@ -474,26 +485,35 @@ step_18() {
   runtime_dir="/run/user/$real_uid"
   session_bus="$runtime_dir/bus"
 
-  if [[ ! -S "$session_bus" ]]; then
-    warn "No active desktop session found for $REAL_USER"
-    warn "Set the wallpaper manually after login:"
-    warn "  gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'"
-    return
+  if [[ -S "$session_bus" ]]; then
+    local env_prefix="export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'"
+
+    as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'" || true
+    as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-uri-dark '$wallpaper_uri'" || true
+    as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-options '$WALLPAPER_OPTIONS'" || true
+
+    local current_uri
+    current_uri="$(as_user "$env_prefix; gsettings get org.gnome.desktop.background picture-uri" 2>/dev/null || true)"
+    if [[ "$current_uri" == *"$wallpaper_path"* ]]; then
+      info "Wallpaper configured for $REAL_USER"
+      return
+    fi
   fi
 
-  local env_prefix="export XDG_RUNTIME_DIR='$runtime_dir'; export DBUS_SESSION_BUS_ADDRESS='unix:path=$session_bus'"
-
-  as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'" || true
-  as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-uri-dark '$wallpaper_uri'" || true
-  as_user "$env_prefix; gsettings set org.gnome.desktop.background picture-options '$WALLPAPER_OPTIONS'" || true
-
-  current_uri="$(as_user "$env_prefix; gsettings get org.gnome.desktop.background picture-uri" 2>/dev/null || true)"
-  if [[ "$current_uri" == *"$wallpaper_path"* ]]; then
-    info "Wallpaper configured for $REAL_USER"
-  else
-    warn "Wallpaper not confirmed — set manually with:"
-    warn "  gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'"
-  fi
+  # No active D-Bus session (script runs as root): register an autostart entry
+  # that applies the wallpaper on first login and then removes itself.
+  local autostart_dir="$REAL_HOME/.config/autostart"
+  as_user "mkdir -p '$autostart_dir'"
+  cat > "$autostart_dir/set-wallpaper.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Set Wallpaper
+Exec=bash -c "gsettings set org.gnome.desktop.background picture-uri '$wallpaper_uri'; gsettings set org.gnome.desktop.background picture-uri-dark '$wallpaper_uri'; gsettings set org.gnome.desktop.background picture-options '$WALLPAPER_OPTIONS'; rm -f '$autostart_dir/set-wallpaper.desktop'"
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+EOF
+  chown "$REAL_USER":"$REAL_USER" "$autostart_dir/set-wallpaper.desktop"
+  warn "No active desktop session — wallpaper will be applied automatically on next login"
 }
 
 choose_steps() {
