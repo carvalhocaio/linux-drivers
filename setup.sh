@@ -70,6 +70,7 @@ STEP_TITLE[14]="OpenCode"
 STEP_TITLE[15]="gh CLI"
 STEP_TITLE[16]="Warp Terminal"
 STEP_TITLE[17]="Wallpaper"
+STEP_TITLE[18]="Git config + rtk"
 
 STEP_DESC[1]="apt update/upgrade"
 STEP_DESC[2]="mesa, intel media, ubuntu-drivers"
@@ -88,6 +89,7 @@ STEP_DESC[14]="install OpenCode for current user"
 STEP_DESC[15]="install gh CLI via official apt repo"
 STEP_DESC[16]="install Warp (.deb)"
 STEP_DESC[17]="set GNOME wallpaper"
+STEP_DESC[18]="git global config + install rtk via brew"
 
 run_step() {
   local n="$1"
@@ -405,6 +407,28 @@ step_17() {
   fi
 }
 
+step_18() {
+  as_user "git config --global user.name 'Caio Carvalho'"
+  as_user "git config --global user.email 'caiocarvalho.py@gmail.com'"
+  as_user "git config --global user.username 'carvalhocaio'"
+  info "Git global config set"
+
+  brew_ensure_pkg "rtk"
+
+  local rtk_version
+  rtk_version="$(brew_run 'rtk --version' 2>/dev/null || true)"
+  if [[ "$rtk_version" != *"rtk 0.28.2"* ]]; then
+    warn "rtk version check: expected 'rtk 0.28.2', got: ${rtk_version:-not found}"
+  else
+    info "rtk version verified: $rtk_version"
+  fi
+
+  brew_run "rtk gain" || warn "rtk gain failed (may need authentication)"
+
+  brew_run "rtk init -g" || warn "rtk init -g failed (may need authentication)"
+  info "rtk initialised"
+}
+
 choose_steps() {
   local i
   local mark
@@ -412,7 +436,7 @@ choose_steps() {
   local key
   local current=1
   local all_selected
-  local -i max_step=17
+  local -i max_step=18
   declare -A selected
 
   for i in $(seq 1 "$max_step"); do
@@ -528,6 +552,7 @@ print_summary() {
   echo "  OpenCode:   $(as_user 'opencode --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Warp:       $(warp-terminal --version 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Wallpaper:  $(as_user 'gsettings get org.gnome.desktop.background picture-uri' 2>/dev/null || echo 'N/A')"
+  echo "  rtk:        $(brew_run 'rtk --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo "  Zed:        $(as_user 'zed --version' 2>/dev/null | head -1 || echo 'N/A')"
   echo ""
 }
