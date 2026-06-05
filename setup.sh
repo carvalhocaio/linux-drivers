@@ -411,6 +411,7 @@ step_18() {
   as_user "git config --global user.name 'Caio Carvalho'"
   as_user "git config --global user.email 'caiocarvalho.py@gmail.com'"
   as_user "git config --global user.username 'carvalhocaio'"
+  as_user "git config --global init.defaultBranch main"
   info "Git global config set"
 
   brew_ensure_pkg "rtk"
