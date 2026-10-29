@@ -23,6 +23,7 @@ readonly STEPS=(
     "docker|Docker Engine (rootful) + weekly prune"
     "apps|Chrome, Claude Desktop, Warp, gh, gcloud, OBS, Spotify"
     "dev_tools|uv, ruff, Claude Code, OpenCode, Zed, lazydocker, rtk, gh-dash"
+    "languages|asdf + Python, Node.js (pnpm via corepack)"
     "git|Git config"
     "shell|Fish + Starship + direnv"
     "fonts|JetBrains Mono, Nerd Fonts, Noto"
@@ -35,6 +36,11 @@ readonly TIMEZONE="America/Cuiaba"
 readonly GIT_NAME="Caio Carvalho"
 readonly GIT_EMAIL="caiocarvalho.py@gmail.com"
 readonly GIT_USERNAME="carvalhocaio"
+
+readonly ASDF_VERSION="0.19.0"
+readonly ASDF_SHA256="f6aa14de1348c9a85f3095f79792a5cd04305c466e6458c69a36a1621cd729ef"
+readonly PYTHON_VERSION="3.11.16"
+readonly NODE_VERSION="24.14.0"
 
 readonly RTK_VERSION="1.0.1"
 readonly RTK_SHA256="5b919c3bccb799b67a61866d0e617410a4fcdf173e2614440e59de2fa2003436"
@@ -70,7 +76,7 @@ user_write() { sudo -u "$TARGET_USER" install -Dm"${2:-0644}" /dev/stdin "$1"; }
 
 as_user() {
     sudo -u "$TARGET_USER" -H env \
-        PATH="${TARGET_HOME}/.local/bin:${TARGET_HOME}/.opencode/bin:/usr/local/bin:/usr/bin:/bin" \
+        PATH="${TARGET_HOME}/.asdf/shims:${TARGET_HOME}/.local/bin:${TARGET_HOME}/.opencode/bin:/usr/local/bin:/usr/bin:/bin" \
         XDG_RUNTIME_DIR="/run/user/${TARGET_UID}" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${TARGET_UID}/bus" \
         "$@"
@@ -162,7 +168,7 @@ step_base() {
 
     apt_install \
         vim wget unzip make build-essential usbutils pciutils lm-sensors powertop btop \
-        jq ripgrep fd-find bat direnv fish neovim nodejs npm git
+        jq ripgrep fd-find bat direnv fish neovim git
     apt_install_available eza starship lazygit
     info "Base system ready"
 }
@@ -508,6 +514,42 @@ step_dev_tools() {
     info "Dev tooling installed"
 }
 
+install_asdf() {
+    if [[ $(asdf --version 2>/dev/null || true) == *"$ASDF_VERSION"* ]]; then
+        return
+    fi
+    local tarball="${WORKDIR}/asdf.tar.gz" dest="${WORKDIR}/asdf"
+    download "https://github.com/asdf-vm/asdf/releases/download/v${ASDF_VERSION}/asdf-v${ASDF_VERSION}-linux-amd64.tar.gz" "$tarball"
+    echo "${ASDF_SHA256}  ${tarball}" | sha256sum -c --quiet
+    mkdir -p "$dest"
+    tar -xzf "$tarball" -C "$dest"
+    install -m 0755 "${dest}/asdf" /usr/local/bin/asdf
+}
+
+asdf_install() {
+    local plugin=$1 version=$2
+    as_user asdf plugin add "$plugin" 2>/dev/null || true
+    as_user asdf install "$plugin" "$version"
+    as_user asdf set --home "$plugin" "$version"
+}
+
+step_languages() {
+    # python-build compiles CPython from source.
+    apt_install \
+        build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
+        libncurses-dev xz-utils tk-dev libffi-dev liblzma-dev
+    apt_purge_installed nodejs npm
+
+    install_asdf
+    asdf completion fish | user_write "${TARGET_HOME}/.config/fish/completions/asdf.fish"
+
+    asdf_install python "$PYTHON_VERSION"
+    asdf_install nodejs "$NODE_VERSION"
+    as_user corepack enable pnpm
+    as_user asdf reshim nodejs
+    info "asdf ready: Python ${PYTHON_VERSION}, Node.js ${NODE_VERSION}, pnpm"
+}
+
 step_git() {
     local key value
     while IFS='=' read -r key value; do
@@ -530,7 +572,9 @@ step_shell() {
     user_write "${fish_conf}/10-env.fish" <<'EOF'
 set -gx EDITOR vim
 set -g fish_greeting
+set -q ASDF_DATA_DIR; or set -gx ASDF_DATA_DIR ~/.asdf
 fish_add_path -g ~/.local/bin ~/.opencode/bin
+fish_add_path -gm $ASDF_DATA_DIR/shims
 EOF
     user_write "${fish_conf}/20-aliases.fish" <<'EOF'
 if status is-interactive
@@ -697,6 +741,10 @@ PipeWire|pipewire --version | tail -1
 Docker|docker --version
 Fish|fish --version
 uv|uv --version
+asdf|asdf --version
+Python|python --version
+Node.js|node --version
+pnpm|pnpm --version
 gh|gh --version
 Claude|claude --version
 OpenCode|opencode --version

@@ -20,6 +20,7 @@ Mirrors my NixOS [`configuration.nix`](https://gist.github.com/carvalhocaio/9d21
 | `docker` | Docker CE (rootful), Compose/Buildx plugins, weekly `docker system prune` | `virtualisation.docker` |
 | `apps` | Chrome (VA-API flags), Claude Desktop, Warp, `gh`, `gcloud`, OBS, Spotify (snap) | overlays + `environment.systemPackages` |
 | `dev_tools` | uv, ruff, Claude Code, OpenCode, Zed, lazydocker, rtk (pinned + sha256), gh-dash | `environment.systemPackages` |
+| `languages` | [asdf](https://asdf-vm.com) 0.19.0 (Go binary, pinned + sha256), Python 3.11.16, Node.js 24.14.0, pnpm via corepack | — (devshells/direnv on NixOS) |
 | `git` | `--global` identity, `pull.rebase`, `push.autoSetupRemote` | `programs.git` |
 | `shell` | fish as login shell, aliases, Starship, direnv hook | `programs.fish`, `programs.starship`, `programs.direnv` |
 | `fonts` | JetBrains Mono, JetBrainsMono + Terminess Nerd Fonts, Noto + emoji | `fonts.packages`, `fontconfig.defaultFonts` |
@@ -78,7 +79,9 @@ To revert a change: delete its file and reboot.
 - **thermald** is masked on purpose: `thinkpad_acpi` exposes DYTC (`dytc_lapmode`) and thermald refuses to run alongside it.
 - `locale`, `fonts` and `wallpaper` call `gsettings`, so run them from a logged-in GNOME session; otherwise they warn and skip that part.
 - `gh-dash` needs `gh auth login` first.
-- Coming from the previous Homebrew/asdf version? Fish now comes from apt (`/usr/bin/fish`), Python is managed by `uv` and Node by apt. Remove Homebrew with its uninstall script once you've checked nothing depends on it.
+- **asdf without Homebrew:** since 0.16 asdf is a single Go binary, so it goes straight to `/usr/local/bin`. Existing `.tool-versions` files and `~/.asdf` installs keep working. Versions are pinned at the top of `setup.sh` (`PYTHON_VERSION`, `NODE_VERSION`).
+- **uv and asdf coexist:** asdf owns the interpreters, uv handles project venvs and tools (`ruff`).
+- Coming from the previous Homebrew version? Fish now comes from apt (`/usr/bin/fish`). Remove Homebrew with its uninstall script once you've checked nothing depends on it.
 
 ## Hardware
 
