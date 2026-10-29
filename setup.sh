@@ -18,7 +18,8 @@ readonly STEPS=(
     "locale|Locale, timezone, keyboard (br-thinkpad)"
     "desktop|GNOME cleanup + printing"
     "audio|PipeWire low-latency + USB headset autosuspend"
-    "hardware|Firmware, battery thresholds, CPU power limits, logind"
+    "hardware|Microcode, battery thresholds, CPU power limits, logind"
+    "firmware|BIOS/EC/device firmware via fwupd (LVFS), interactive"
     "graphics|Intel VA-API / QuickSync / OpenCL"
     "docker|Docker Engine (rootful) + weekly prune"
     "apps|Chrome, Claude Desktop, Warp, gh, gcloud, OBS, Spotify"
@@ -31,6 +32,10 @@ readonly STEPS=(
     "cleanup|Remove orphaned packages and caches"
 )
 readonly DEFAULT_STEPS=(base boot memory network audio hardware graphics)
+
+# PL1 = sustained, PL2 = short turbo bursts. Validate thermals with s-tui under load (target < 90°C).
+readonly PL1_WATTS="${PL1_WATTS:-20}"
+readonly PL2_WATTS="${PL2_WATTS:-38}"
 
 readonly TIMEZONE="America/Cuiaba"
 readonly GIT_NAME="Caio Carvalho"
@@ -46,7 +51,7 @@ readonly RTK_VERSION="1.0.1"
 readonly RTK_SHA256="5b919c3bccb799b67a61866d0e617410a4fcdf173e2614440e59de2fa2003436"
 
 # Unofficial .deb (ananicy-cpp + CachyOS rules) — not in the Ubuntu archive.
-readonly ENABLE_ANANICY="${ENABLE_ANANICY:-0}"
+readonly ENABLE_ANANICY="${ENABLE_ANANICY:-1}"
 readonly ANANICY_DEB_URL="https://github.com/nilocnt/ananicy-debian/releases/download/v1.2.48-2/ananicy-debian_1.2.48-2_amd64.deb"
 
 readonly CHROME_FLAGS="--enable-features=AcceleratedVideoEncoder,AcceleratedVideoDecodeLinuxZeroCopyGL,AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks --ignore-gpu-blocklist --enable-zero-copy"
@@ -242,7 +247,7 @@ EOF
         apt_install "$deb"
         systemctl enable --now ananicy-cpp.service
     else
-        warn "ananicy-cpp skipped (ENABLE_ANANICY=1 installs the unofficial .deb)"
+        warn "ananicy-cpp skipped (ENABLE_ANANICY=0)"
     fi
     info "zram, earlyoom and journald configured"
 }
@@ -348,20 +353,21 @@ EOF
 }
 
 step_hardware() {
-    apt_install fwupd linux-firmware intel-microcode tpm2-tools
+    apt_install linux-firmware intel-microcode tpm2-tools
     systemctl enable --now fstrim.timer
 
     # thinkpad_acpi exposes DYTC (dytc_lapmode); thermald refuses to run alongside it.
     mask_unit thermald.service
 
-    # Battery 75–80% and PL1/PL2 at 20W/28W: no 100°C throttling during video calls.
-    write_file /etc/tmpfiles.d/90-thinkpad-power.conf <<'EOF'
+    # Battery 75–80%; PL1 capped to avoid 100°C throttling in calls, PL2 kept for snappy bursts.
+    local pl1_uw=$((PL1_WATTS * 1000000)) pl2_uw=$((PL2_WATTS * 1000000))
+    write_file /etc/tmpfiles.d/90-thinkpad-power.conf <<EOF
 w- /sys/class/power_supply/BAT0/charge_control_start_threshold - - - - 75
 w- /sys/class/power_supply/BAT0/charge_control_end_threshold - - - - 80
-w- /sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw - - - - 20000000
-w- /sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw - - - - 28000000
-w- /sys/class/powercap/intel-rapl-mmio:0/constraint_0_power_limit_uw - - - - 20000000
-w- /sys/class/powercap/intel-rapl-mmio:0/constraint_1_power_limit_uw - - - - 28000000
+w- /sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw - - - - ${pl1_uw}
+w- /sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw - - - - ${pl2_uw}
+w- /sys/class/powercap/intel-rapl-mmio:0/constraint_0_power_limit_uw - - - - ${pl1_uw}
+w- /sys/class/powercap/intel-rapl-mmio:0/constraint_1_power_limit_uw - - - - ${pl2_uw}
 EOF
     systemd-tmpfiles --create /etc/tmpfiles.d/90-thinkpad-power.conf \
         || warn "Some power knobs are missing on this kernel"
@@ -378,13 +384,46 @@ EOF
         powerprofilesctl set balanced || true
     fi
 
-    fwupdmgr refresh --force &>/dev/null || true
-    if fwupdmgr get-updates &>/dev/null; then
-        fwupdmgr update -y --no-reboot-check || warn "Firmware update failed"
-    else
-        info "No firmware updates available"
+    info "Microcode, battery and power limits configured (PL1 ${PL1_WATTS}W / PL2 ${PL2_WATTS}W)"
+}
+
+on_ac_power() {
+    local supply
+    for supply in /sys/class/power_supply/*; do
+        [[ $(cat "${supply}/type" 2>/dev/null) == Mains && $(cat "${supply}/online" 2>/dev/null) == 1 ]] && return 0
+    done
+    return 1
+}
+
+step_firmware() {
+    apt_install fwupd
+    systemctl enable --now fwupd-refresh.timer 2>/dev/null || true
+    info "Current BIOS: $(cat /sys/class/dmi/id/bios_version) ($(cat /sys/class/dmi/id/bios_date))"
+
+    if ! fwupdmgr refresh --force; then
+        warn "LVFS refresh failed; check 'fwupdmgr get-remotes' or use Lenovo's BIOS bootable ISO"
+        return
     fi
-    info "Firmware, battery and power limits configured"
+
+    local status=0
+    fwupdmgr get-updates || status=$?
+    case $status in
+        0) ;;
+        2) info "Firmware is up to date"; return ;;
+        *) warn "fwupdmgr get-updates failed (exit ${status}); try 'fwupdmgr get-updates --verbose'"; return ;;
+    esac
+
+    if ! on_ac_power; then
+        warn "Plug in the charger before flashing firmware; skipping update"
+        return
+    fi
+    if [[ ! -t 0 ]]; then
+        warn "No TTY: run 'sudo fwupdmgr update' yourself to review and apply"
+        return
+    fi
+
+    # Interactive on purpose: fwupd shows each update and asks before flashing and rebooting.
+    fwupdmgr update || warn "Firmware update did not complete"
 }
 
 step_graphics() {
@@ -734,6 +773,7 @@ print_summary() {
         printf "  %-11s %s\n" "${label}:" "$(as_user bash -c "$cmd" 2>/dev/null | head -1 || echo 'N/A')"
     done <<'EOF'
 Kernel|uname -r
+BIOS|cat /sys/class/dmi/id/bios_version
 Swap|swapon --show=NAME,SIZE --noheadings | tr '\n' ' '
 OOM|systemctl is-active earlyoom
 TCP|sysctl -n net.ipv4.tcp_congestion_control

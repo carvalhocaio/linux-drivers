@@ -10,12 +10,13 @@ Mirrors my NixOS [`configuration.nix`](https://gist.github.com/carvalhocaio/9d21
 |------|--------------|------------------|
 | `base` | `apt full-upgrade`, universe/multiverse, base CLI (`ripgrep`, `fd`, `bat`, `eza`, `btop`, `lazygit`…) | `environment.systemPackages` |
 | `boot` | `mem_sleep_default=deep`, blacklist `tiny_power_button`, rtw88 ASPM/LPS off | `boot.kernelParams`, `boot.blacklistedKernelModules`, `boot.extraModprobeConfig` |
-| `memory` | zram (zstd, 50%), earlyoom (replaces `systemd-oomd`), `vm.*` sysctl, journald 500M, optional ananicy-cpp | `zramSwap`, `services.earlyoom`, `boot.kernel.sysctl`, `services.ananicy` |
+| `memory` | zram (zstd, 50%), earlyoom (replaces `systemd-oomd`), `vm.*` sysctl, journald 500M, ananicy-cpp + CachyOS rules | `zramSwap`, `services.earlyoom`, `boot.kernel.sysctl`, `services.ananicy` |
 | `network` | TCP BBR + CAKE, Wi-Fi powersave off | `boot.kernel.sysctl`, `networking.networkmanager.wifi.powersave` |
 | `locale` | `en_US` + `pt_BR` LC_*, `America/Cuiaba`, `br` (ThinkPad) layout | `i18n`, `time.timeZone`, `services.xserver.xkb` |
 | `desktop` | Purge GNOME apps with background SearchProviders, CUPS | `environment.gnome.excludePackages`, `services.printing` |
 | `audio` | PipeWire quantum 1024 @ 48 kHz, pulse stability, USB headset autosuspend off | `services.pipewire.extraConfig`, `wireplumber.extraConfig` |
-| `hardware` | Battery 75–80%, PL1/PL2 20 W / 28 W, power key → suspend, `thermald` masked, fwupd, fstrim | `systemd.tmpfiles.rules`, `services.logind`, `services.fwupd` |
+| `hardware` | Microcode, battery 75–80%, PL1/PL2 20 W / 38 W, power key → suspend, `thermald` masked, fstrim | `systemd.tmpfiles.rules`, `services.logind` |
+| `firmware` | Shows current BIOS, refreshes LVFS, lists updates and flashes interactively (AC power required) | `services.fwupd` |
 | `graphics` | `intel-media-va-driver-non-free` (iHD), oneVPL, OpenCL, `LIBVA_DRIVER_NAME=iHD` | `hardware.graphics.extraPackages`, `environment.sessionVariables` |
 | `docker` | Docker CE (rootful), Compose/Buildx plugins, weekly `docker system prune` | `virtualisation.docker` |
 | `apps` | Chrome (VA-API flags), Claude Desktop, Warp, `gh`, `gcloud`, OBS, Spotify (snap) | overlays + `environment.systemPackages` |
@@ -47,10 +48,13 @@ Downloaded as `.zip`? The execute bit is lost — run `chmod +x setup.sh` first.
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `ENABLE_ANANICY` | `0` | `1` installs [ananicy-debian](https://github.com/nilocnt/ananicy-debian) (ananicy-cpp + CachyOS rules). Unofficial package — nothing equivalent in the Ubuntu archive. |
+| `ENABLE_ANANICY` | `1` | Installs [ananicy-debian](https://github.com/nilocnt/ananicy-debian) (ananicy-cpp + CachyOS rules): background builds, Node, Docker and indexers get lower priority than audio, video and the browser. Unofficial package — nothing equivalent in the Ubuntu archive. `0` skips it. |
+| `PL1_WATTS` | `20` | Sustained CPU power limit. |
+| `PL2_WATTS` | `38` | Short-burst (turbo) power limit. |
 
 ```bash
-sudo ENABLE_ANANICY=1 ./setup.sh memory
+sudo PL2_WATTS=35 ./setup.sh hardware      # tune limits
+sudo ENABLE_ANANICY=0 ./setup.sh memory    # skip ananicy
 ```
 
 ## Where things land
@@ -76,6 +80,8 @@ To revert a change: delete its file and reboot.
 
 - **Reboot** after `boot`, `memory`, `hardware`, `graphics` and `docker` (kernel params, logind, zram, groups, `environment.d`).
 - **Power profile:** stay on *Balanced*. *Performance* raises PL1 to 35 W / 64 W and hits 92 °C.
+- **Validate PL2:** run a heavy build or `stress-ng --cpu 8 --timeout 120` while watching `s-tui`. Below ~90 °C, keep it; otherwise lower `PL2_WATTS`.
+- **Firmware:** `firmware` is not pre-selected because flashing should be a deliberate choice. It refuses to flash on battery and lets fwupd ask before each update. If LVFS has nothing for the device, use Lenovo's *BIOS Update Utility (Bootable CD)* for E14/E15 Gen 2.
 - **thermald** is masked on purpose: `thinkpad_acpi` exposes DYTC (`dytc_lapmode`) and thermald refuses to run alongside it.
 - `locale`, `fonts` and `wallpaper` call `gsettings`, so run them from a logged-in GNOME session; otherwise they warn and skip that part.
 - `gh-dash` needs `gh auth login` first.
@@ -85,7 +91,11 @@ To revert a change: delete its file and reboot.
 
 ## Hardware
 
-- **CPU/GPU:** Intel Core (Tiger Lake) · Iris Xe Graphics (TigerLake-LP GT2)
+- **Model:** 20TB000LBO · BIOS R1EET (1.62 as of 2024-07)
+- **CPU:** Intel Core i7-1165G7 (4C/8T, up to 4.7 GHz)
+- **Memory:** 32 GB DDR4-3200, single SO-DIMM (single channel)
+- **GPU:** Intel Iris Xe (TigerLake-LP GT2) — runs as UHD-class in single channel
+- **Storage:** Samsung 980 NVMe 250 GB
 - **Audio:** Intel Tiger Lake-LP Smart Sound Technology (SOF)
 - **Network:** Realtek RTL8822BE (Wi-Fi/Bluetooth) + RTL8111 (Ethernet)
 - **Firmware:** [fwupd](https://fwupd.org/) (Lenovo LVFS)
