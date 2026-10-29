@@ -1,73 +1,101 @@
 # Ubuntu Setup
 
-Setup script for drivers and dev tooling.
+Drivers, tuning and dev tooling for a **Lenovo ThinkPad E14 Gen 2** on **Ubuntu 26.04 LTS** (Resolute Raccoon).
 
-## What it updates
+Mirrors my NixOS [`configuration.nix`](https://gist.github.com/carvalhocaio/9d2138b94776737e3951bd0cb4a0b81e): every NixOS option becomes a drop-in file under `/etc`, so the script is idempotent and each change is easy to find and revert.
 
-| Step | Category | Packages |
-|------|----------|----------|
-| 1 | **System** | All system packages via `apt upgrade` |
-| 2 | **Video** | Mesa, Vulkan, Intel VA-API, `ubuntu-drivers` recommendations |
-| 3 | **Audio** | PipeWire, ALSA, Intel SOF firmware |
-| 4 | **Network** | Realtek Wi-Fi/Ethernet firmware, Bluetooth (BlueZ) |
-| 5 | **Security & Firmware** | Kernel, `intel-microcode`, `thermald`, TPM tools, Lenovo firmware via `fwupd` |
-| 6 | **Build + Brew** | `build-essential`, `libssl-dev`, and Homebrew bootstrap/update |
-| 7 | **Docker** | Docker Engine, CLI, containerd, Buildx, Compose plugin |
-| 8 | **Userland (Brew)** | `git`, `curl`, `wget`, `vim`, `fish`, `starship`, `asdf` |
-| 9 | **Shell + asdf** | Fish config, Starship config, Python 3.11.16, Node.js 24.14.0 |
-| 10 | **Fonts** | JetBrains Mono latest stable (download at runtime) |
-| 11 | **Tools** | Zed (via official install script) |
-| 12 | **Cleanup** | Remove orphaned packages and stale caches |
-| 13 | **AI Tooling** | Claude Code installer (current user) |
-| 14 | **AI Tooling** | OpenCode installer (current user) |
-| 15 | **CLI** | gh CLI via official apt repo (`cli.github.com`) |
-| 16 | **Terminal** | Warp latest `.deb` (download via `app.warp.dev/download?package=deb`) |
-| 17 | **Desktop** | Set GNOME wallpaper to `assets/wallpapers/red_distortion_3.jpg` (`zoom`) |
-| 18 | **Git + rtk** | Git global config + install `rtk` via Homebrew |
-| 19 | **Video Acceleration** | `intel-media-va-driver-non-free`, `vainfo`, `obs-studio`, `ffmpeg` + add user to `render`/`video` groups |
+## Steps
 
-## Hardware
+| Step | What it does | NixOS equivalent |
+|------|--------------|------------------|
+| `base` | `apt full-upgrade`, universe/multiverse, base CLI (`ripgrep`, `fd`, `bat`, `eza`, `btop`, `lazygit`…) | `environment.systemPackages` |
+| `boot` | `mem_sleep_default=deep`, blacklist `tiny_power_button`, rtw88 ASPM/LPS off | `boot.kernelParams`, `boot.blacklistedKernelModules`, `boot.extraModprobeConfig` |
+| `memory` | zram (zstd, 50%), earlyoom (replaces `systemd-oomd`), `vm.*` sysctl, journald 500M, ananicy-cpp + CachyOS rules | `zramSwap`, `services.earlyoom`, `boot.kernel.sysctl`, `services.ananicy` |
+| `network` | TCP BBR + CAKE, Wi-Fi powersave off | `boot.kernel.sysctl`, `networking.networkmanager.wifi.powersave` |
+| `locale` | `en_US` + `pt_BR` LC_*, `America/Cuiaba`, `br` (ThinkPad) layout | `i18n`, `time.timeZone`, `services.xserver.xkb` |
+| `desktop` | Purge GNOME apps with background SearchProviders, CUPS | `environment.gnome.excludePackages`, `services.printing` |
+| `audio` | PipeWire quantum 1024 @ 48 kHz, pulse stability, USB headset autosuspend off | `services.pipewire.extraConfig`, `wireplumber.extraConfig` |
+| `hardware` | Microcode, battery 75–80%, PL1/PL2 20 W / 38 W, power key → suspend, `thermald` masked, fstrim | `systemd.tmpfiles.rules`, `services.logind` |
+| `firmware` | Shows current BIOS, refreshes LVFS, lists updates and flashes interactively (AC power required) | `services.fwupd` |
+| `graphics` | `intel-media-va-driver-non-free` (iHD), oneVPL, OpenCL, `LIBVA_DRIVER_NAME=iHD` | `hardware.graphics.extraPackages`, `environment.sessionVariables` |
+| `docker` | Docker CE (rootful), Compose/Buildx plugins, weekly `docker system prune` | `virtualisation.docker` |
+| `apps` | Chrome (VA-API flags), Claude Desktop, Warp, `gh`, `gcloud`, OBS, Spotify (snap) | overlays + `environment.systemPackages` |
+| `dev_tools` | uv, ruff, Claude Code, OpenCode, Zed, lazydocker, rtk (pinned + sha256), gh-dash | `environment.systemPackages` |
+| `languages` | [asdf](https://asdf-vm.com) 0.19.0 (Go binary, pinned + sha256), Python 3.11.16, Node.js 24.14.0, pnpm via corepack | — (devshells/direnv on NixOS) |
+| `git` | `--global` identity, `pull.rebase`, `push.autoSetupRemote` | `programs.git` |
+| `shell` | fish as login shell, aliases, Starship, direnv hook | `programs.fish`, `programs.starship`, `programs.direnv` |
+| `fonts` | JetBrains Mono, JetBrainsMono + Terminess Nerd Fonts, Noto + emoji | `fonts.packages`, `fontconfig.defaultFonts` |
+| `wallpaper` | `assets/wallpapers/red_distortion_3.jpg` (`zoom`) | — |
+| `cleanup` | `apt autoremove --purge` + `autoclean` | `nix.gc` |
 
-- **GPU:** Intel Iris Xe Graphics (TigerLake-LP GT2)
-- **Audio:** Intel Tiger Lake-LP Smart Sound Technology
-- **Network:** Realtek RTL8822BE (Wi-Fi/Bluetooth) + RTL8111 (Ethernet)
-- **Firmware:** Managed via [fwupd](https://fwupd.org/) (Lenovo LVFS support)
+Pre-selected in the interactive menu: `base boot memory network audio hardware graphics`.
 
 ## Usage
-
-### Recommended: via `git clone`
 
 ```bash
 git clone https://github.com/carvalhocaio/linux-drivers.git
 cd linux-drivers
-sudo ./setup.sh
+sudo ./setup.sh                 # interactive selector
+sudo ./setup.sh audio shell     # specific steps, no menu
+./setup.sh --list
 ```
 
-The script opens an interactive selector in the terminal (steps `1-5` are pre-selected by default):
+Selector keys: `↑/↓` move · `Space` toggle · `Enter` run · `a` toggle all · `q` quit.
 
-- Arrow keys: move
-- Space: check/uncheck a step
-- Enter: run selected steps
-- `a`: toggle all
-- `q`: quit
+Downloaded as `.zip`? The execute bit is lost — run `chmod +x setup.sh` first.
 
-### Via ZIP download
+### Options
 
-If you downloaded the repository as a `.zip` from GitHub, the execute bit **is not preserved**.
-You need to grant it manually before running:
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `ENABLE_ANANICY` | `1` | Installs [ananicy-debian](https://github.com/nilocnt/ananicy-debian) (ananicy-cpp + CachyOS rules): background builds, Node, Docker and indexers get lower priority than audio, video and the browser. Unofficial package — nothing equivalent in the Ubuntu archive. `0` skips it. |
+| `PL1_WATTS` | `20` | Sustained CPU power limit. |
+| `PL2_WATTS` | `38` | Short-burst (turbo) power limit. |
 
 ```bash
-chmod +x setup.sh
-sudo ./setup.sh
+sudo PL2_WATTS=35 ./setup.sh hardware      # tune limits
+sudo ENABLE_ANANICY=0 ./setup.sh memory    # skip ananicy
 ```
 
-The script requires root privileges and will prompt for a reboot at the end if one is needed.
+## Where things land
 
-Note for step 17 (Wallpaper): this step needs an active graphical login session for the selected user.
-If no desktop session bus is available yet, the script will skip wallpaper setup and show a warning.
+| Path | Step |
+|------|------|
+| `/etc/default/grub.d/90-thinkpad.cfg` | `boot` |
+| `/etc/modprobe.d/90-*.conf` | `boot` |
+| `/etc/sysctl.d/90-{memory,network}.conf` | `memory`, `network` |
+| `/etc/systemd/zram-generator.conf` | `memory` |
+| `/etc/NetworkManager/conf.d/99-wifi-powersave-off.conf` | `network` |
+| `/etc/pipewire/**/92-*.conf`, `/etc/wireplumber/wireplumber.conf.d/51-*.conf` | `audio` |
+| `/etc/tmpfiles.d/90-thinkpad-power.conf` | `hardware` |
+| `/etc/systemd/logind.conf.d/90-power-key.conf` | `hardware` |
+| `/etc/environment.d/90-vaapi.conf` | `graphics` |
+| `/etc/systemd/system/docker-prune.{service,timer}` | `docker` |
+| `~/.config/fish/conf.d/{10-env,20-aliases,90-tools}.fish` | `shell` |
+| `~/.local/share/applications/google-chrome.desktop` | `apps` |
 
-## Requirements
+To revert a change: delete its file and reboot.
 
-- `curl` (installed automatically by the script if missing)
-- `fwupd` and `ubuntu-drivers` (pre-installed on Ubuntu Desktop)
-- `fontconfig` and `unzip` are installed automatically when needed (JetBrains Mono step)
+## Notes
+
+- **Reboot** after `boot`, `memory`, `hardware`, `graphics` and `docker` (kernel params, logind, zram, groups, `environment.d`).
+- **Power profile:** stay on *Balanced*. *Performance* raises PL1 to 35 W / 64 W and hits 92 °C.
+- **Validate PL2:** run a heavy build or `stress-ng --cpu 8 --timeout 120` while watching `s-tui`. Below ~90 °C, keep it; otherwise lower `PL2_WATTS`.
+- **Firmware:** `firmware` is not pre-selected because flashing should be a deliberate choice. It refuses to flash on battery and lets fwupd ask before each update. If LVFS has nothing for the device, use Lenovo's *BIOS Update Utility (Bootable CD)* for E14/E15 Gen 2.
+- **thermald** is masked on purpose: `thinkpad_acpi` exposes DYTC (`dytc_lapmode`) and thermald refuses to run alongside it.
+- `locale`, `fonts` and `wallpaper` call `gsettings`, so run them from a logged-in GNOME session; otherwise they warn and skip that part.
+- `gh-dash` needs `gh auth login` first.
+- **asdf without Homebrew:** since 0.16 asdf is a single Go binary, so it goes straight to `/usr/local/bin`. Existing `.tool-versions` files and `~/.asdf` installs keep working. Versions are pinned at the top of `setup.sh` (`PYTHON_VERSION`, `NODE_VERSION`).
+- **uv and asdf coexist:** asdf owns the interpreters, uv handles project venvs and tools (`ruff`).
+- Coming from the previous Homebrew version? Fish now comes from apt (`/usr/bin/fish`). Remove Homebrew with its uninstall script once you've checked nothing depends on it.
+
+## Hardware
+
+- **Model:** 20TB000LBO · BIOS R1EET (1.62 as of 2024-07)
+- **CPU:** Intel Core i7-1165G7 (4C/8T, up to 4.7 GHz)
+- **Memory:** 32 GB DDR4-3200, single SO-DIMM (single channel)
+- **GPU:** Intel Iris Xe (TigerLake-LP GT2) — runs as UHD-class in single channel
+- **Storage:** Samsung 980 NVMe 250 GB
+- **Audio:** Intel Tiger Lake-LP Smart Sound Technology (SOF)
+- **Network:** Realtek RTL8822BE (Wi-Fi/Bluetooth) + RTL8111 (Ethernet)
+- **Firmware:** [fwupd](https://fwupd.org/) (Lenovo LVFS)
