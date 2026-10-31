@@ -194,61 +194,124 @@ blacklist tiny_power_button
 EOF
 
     # Realtek rtw88_8822be: aggressive PCIe ASPM/LPS causes IRQ spikes and call drops.
+    # disable_msi: with MSI the firmware intermittently stops acking H2C commands
+    # ("failed to send h2c command" + beacon loss) after ~20 min; legacy INTx avoids it.
     write_file /etc/modprobe.d/90-rtw88-stability.conf <<'EOF'
-options rtw88_pci disable_aspm=Y
+options rtw88_pci disable_aspm=Y disable_msi=Y
 options rtw88_core disable_lps_deep=Y
 EOF
 
-    # Even with the options above the firmware can get stuck leaving LPS/IPS
-    # ("failed to leave ips state"), silencing the card and hiding every network
-    # until reboot. This watchdog reloads the module automatically instead.
+    # Never let the card (or its root port) drop to D3cold: once it does, the
+    # RTL8822BE can't return to D0 ("Unable to change power state from D3cold
+    # to D0") and only a reboot brings Wi-Fi back.
+    write_file /etc/udev/rules.d/90-rtw88-pm.rules <<'EOF'
+ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="0x10ec", ATTR{device}=="0xb822", ATTR{power/control}="on", ATTR{d3cold_allowed}="0", RUN+="/bin/sh -c 'echo on > /sys%p/../power/control; echo 0 > /sys%p/../d3cold_allowed'"
+EOF
+    udevadm control --reload-rules 2>/dev/null || true
+    udevadm trigger --subsystem-match=pci --attr-match=vendor=0x10ec --attr-match=device=0xb822 2>/dev/null || true
+
+    # Even with the options above the firmware can hang ("failed to send h2c
+    # command", "failed to leave ips state"), silencing the card and hiding every
+    # network until reboot. This watchdog resets the card automatically instead.
     write_file /usr/local/sbin/rtw88-watchdog 0755 <<'EOF'
 #!/usr/bin/env bash
-# Auto-recover the RTL8822BE when its firmware hangs leaving LPS/IPS.
-# Symptoms: "mac power on failed" / "failed to leave ips state" in dmesg,
-# followed by "no networks found" until the module is reloaded.
+# Auto-recover the RTL8822BE when its firmware hangs.
+# Symptoms: a burst of "failed to send h2c command", then "mac power on failed" /
+# "failed to leave ips state", then "no networks found" until reboot.
 set -uo pipefail
 
-readonly DEV=0000:04:00.0
 readonly DRIVER=rtw88_8822be
-readonly HANG_RE='failed to leave ips state|mac power on failed|failed to power on mac'
+readonly PCI_ID=10ec:b822
+readonly HANG_RE='failed to leave ips state|mac power on failed|failed to power on mac|failed to setup chip'
+readonly H2C_RE='failed to send h2c command'
+readonly H2C_BURST=6     # h2c failures within H2C_WINDOW seconds = hung firmware
+readonly H2C_WINDOW=30
 readonly COOLDOWN=60
 
 log() { printf 'rtw88-watchdog: %s\n' "$*"; }
 
-recover() {
-    local iface
-    iface=$(find /sys/class/net -maxdepth 1 -name 'wl*' -printf '%f\n' -quit 2>/dev/null)
-
-    log "firmware hang detected; reloading ${DRIVER}"
-    # A wedged card can make NetworkManager/modprobe block in D-state: cap them.
-    [[ -n ${iface:-} ]] && timeout 10 nmcli device disconnect "$iface" >/dev/null 2>&1
-    timeout 20 modprobe -r "$DRIVER" >/dev/null 2>&1 || true
-    timeout 20 modprobe -r rtw88_pci >/dev/null 2>&1 || true
-    timeout 20 modprobe -r rtw88_core >/dev/null 2>&1 || true
-    sleep 2
-
-    # If the module cannot come back the function is wedged in D3; reset it.
-    if ! timeout 20 modprobe "$DRIVER" >/dev/null 2>&1; then
-        log "module reload failed; resetting PCI function"
-        if [[ -e /sys/bus/pci/devices/${DEV} ]]; then
-            echo 1 > "/sys/bus/pci/devices/${DEV}/remove"
-            sleep 1
-            echo 1 > /sys/bus/pci/rescan
-            sleep 2
-            timeout 20 modprobe "$DRIVER" >/dev/null 2>&1 || log "module reload failed again"
-        fi
-    fi
-    log "recovery finished"
+find_dev() {
+    local d
+    for d in /sys/bus/pci/devices/*; do
+        [[ $(<"$d/vendor"):$(<"$d/device") == 0x${PCI_ID%%:*}:0x${PCI_ID##*:} ]] && { basename "$d"; return 0; }
+    done
+    return 1
 }
 
+# Keep the card and its root port out of runtime suspend / D3cold.
+pin_power() {
+    local dev=$1 path
+    for path in "/sys/bus/pci/devices/${dev}" "$(readlink -f "/sys/bus/pci/devices/${dev}/..")"; do
+        [[ -w ${path}/power/control ]] && echo on > "${path}/power/control"
+        [[ -w ${path}/d3cold_allowed ]] && echo 0 > "${path}/d3cold_allowed"
+    done
+}
+
+# modprobe exits 0 even when probe fails, so check the device really came up.
+card_up() {
+    local dev=$1 i
+    for i in {1..10}; do
+        [[ -e /sys/bus/pci/devices/${dev}/driver ]] &&
+            compgen -G "/sys/bus/pci/devices/${dev}/net/*" >/dev/null && return 0
+        sleep 1
+    done
+    return 1
+}
+
+# modprobe -r also drops rtw88_8822b/rtw88_pci/rtw88_core once unused.
+unload() { timeout 20 modprobe -r "$DRIVER" >/dev/null 2>&1 || true; }
+
+recover() {
+    local dev iface
+    dev=$(find_dev) || { log "RTL8822BE not on the PCI bus; rescanning"; echo 1 > /sys/bus/pci/rescan; sleep 3; dev=$(find_dev) || return; }
+    iface=$(basename "$(compgen -G "/sys/bus/pci/devices/${dev}/net/*" | head -1)" 2>/dev/null)
+
+    log "firmware hang detected on ${dev}; resetting card"
+    # A wedged card can make NetworkManager/modprobe block in D-state: cap them.
+    [[ -n ${iface:-} ]] && timeout 10 nmcli device disconnect "$iface" >/dev/null 2>&1
+    pin_power "$dev"
+    unload
+
+    # Step 1: function-level reset (secondary bus reset) with no driver bound.
+    pin_power "$dev"
+    [[ -w /sys/bus/pci/devices/${dev}/reset ]] && timeout 10 sh -c "echo 1 > /sys/bus/pci/devices/${dev}/reset" 2>/dev/null
+    sleep 1
+    timeout 20 modprobe "$DRIVER" >/dev/null 2>&1
+    if card_up "$dev"; then log "recovered after PCI reset"; return; fi
+
+    # Step 2: drop the device from the bus and rediscover it.
+    log "reset not enough; removing and rescanning PCI device"
+    unload
+    local bridge
+    bridge=$(readlink -f "/sys/bus/pci/devices/${dev}/..")
+    echo 1 > "/sys/bus/pci/devices/${dev}/remove"
+    sleep 2
+    if [[ -w ${bridge}/rescan ]]; then echo 1 > "${bridge}/rescan"; else echo 1 > /sys/bus/pci/rescan; fi
+    sleep 2
+    dev=$(find_dev) && pin_power "$dev"
+    timeout 20 modprobe "$DRIVER" >/dev/null 2>&1
+    if [[ -n ${dev:-} ]] && card_up "$dev"; then log "recovered after PCI rescan"; return; fi
+
+    log "recovery failed; a full power-off (not reboot) may be needed"
+}
+
+if dev=$(find_dev); then pin_power "$dev"; fi
+
 last=0
+h2c=()
 journalctl -k -f -n 0 -o cat |
 while IFS= read -r line; do
-    [[ $line =~ $HANG_RE ]] || continue
     now=$(date +%s)
+    if [[ $line =~ $H2C_RE ]]; then
+        h2c+=("$now")
+        while (( ${#h2c[@]} && now - h2c[0] > H2C_WINDOW )); do h2c=("${h2c[@]:1}"); done
+        (( ${#h2c[@]} >= H2C_BURST )) || continue
+    elif ! [[ $line =~ $HANG_RE ]]; then
+        continue
+    fi
     (( now - last < COOLDOWN )) && continue
     last=$now
+    h2c=()
     recover
 done
 EOF

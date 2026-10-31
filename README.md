@@ -9,7 +9,7 @@ Mirrors my NixOS [`configuration.nix`](https://gist.github.com/carvalhocaio/9d21
 | Step | What it does | NixOS equivalent |
 |------|--------------|------------------|
 | `base` | `apt full-upgrade`, universe/multiverse, base CLI (`ripgrep`, `fd`, `bat`, `eza`, `btop`, `lazygit`…) | `environment.systemPackages` |
-| `boot` | `mem_sleep_default=deep`, `pcie_aspm=off`, blacklist `tiny_power_button`, rtw88 ASPM/LPS off + auto-recovery watchdog | `boot.kernelParams`, `boot.blacklistedKernelModules`, `boot.extraModprobeConfig` |
+| `boot` | `mem_sleep_default=deep`, `pcie_aspm=off`, blacklist `tiny_power_button`, rtw88 ASPM/LPS/MSI off, no D3cold + auto-recovery watchdog | `boot.kernelParams`, `boot.blacklistedKernelModules`, `boot.extraModprobeConfig` |
 | `memory` | zram (zstd, 50%), earlyoom (replaces `systemd-oomd`), `vm.*` sysctl, journald 500M, ananicy-cpp + CachyOS rules | `zramSwap`, `services.earlyoom`, `boot.kernel.sysctl`, `services.ananicy` |
 | `network` | TCP BBR + CAKE, Wi-Fi powersave off | `boot.kernel.sysctl`, `networking.networkmanager.wifi.powersave` |
 | `locale` | `en_US` + `pt_BR` LC_*, `America/Cuiaba`, `br` (ThinkPad) layout | `i18n`, `time.timeZone`, `services.xserver.xkb` |
@@ -63,7 +63,7 @@ sudo ENABLE_ANANICY=0 ./setup.sh memory    # skip ananicy
 |------|------|
 | `/etc/default/grub.d/90-thinkpad.cfg` | `boot` |
 | `/etc/modprobe.d/90-*.conf` | `boot` |
-| `/usr/local/sbin/rtw88-watchdog`, `/etc/systemd/system/rtw88-watchdog.service` | `boot` |
+| `/usr/local/sbin/rtw88-watchdog`, `/etc/systemd/system/rtw88-watchdog.service`, `/etc/udev/rules.d/90-rtw88-pm.rules` | `boot` |
 | `/etc/sysctl.d/90-{memory,network}.conf` | `memory`, `network` |
 | `/etc/systemd/zram-generator.conf` | `memory` |
 | `/etc/NetworkManager/conf.d/zz-wifi-powersave-off.conf` | `network` |
@@ -81,7 +81,7 @@ To revert a change: delete its file and reboot.
 
 - **Reboot** after `boot`, `memory`, `hardware`, `graphics` and `docker` (kernel params, logind, zram, groups, `environment.d`).
 - **Power profile:** stay on *Balanced*. *Performance* raises PL1 to 35 W / 64 W and hits 92 °C.
-- **Wi-Fi (RTL8822BE):** the rtw88 firmware can hang leaving LPS/IPS, leaving the adapter unresponsive and hiding all networks until reboot. `pcie_aspm=off` removes the main trigger; `rtw88-watchdog.service` reloads the module (and resets the PCI function if needed) when `mac power on failed` / `failed to leave ips state` appears. Check it with `systemctl status rtw88-watchdog` and `journalctl -t rtw88-watchdog`. Revert by disabling the unit and removing `pcie_aspm=off` from the boot step.
+- **Wi-Fi (RTL8822BE):** the rtw88 firmware can hang (`failed to send h2c command`, then `failed to leave ips state`), leaving the adapter unresponsive and hiding all networks until reboot. Mitigations: `pcie_aspm=off`, `rtw88_pci disable_aspm=Y disable_msi=Y`, `rtw88_core disable_lps_deep=Y`, and a udev rule that keeps the card and its root port out of D3cold (from which it never returns to D0). `rtw88-watchdog.service` resets the card when it sees a burst of h2c failures or `mac power on failed`: unload → PCI function reset → reload, escalating to remove + rescan; it verifies the interface actually came back. Check it with `systemctl status rtw88-watchdog` and `journalctl -t rtw88-watchdog`. If it logs `recovery failed`, power the laptop off completely (a reboot doesn't cut power to the card). Revert by disabling the unit, removing the udev rule and `pcie_aspm=off` from the boot step.
 - **Validate PL2:** run a heavy build or `stress-ng --cpu 8 --timeout 120` while watching `s-tui`. Below ~90 °C, keep it; otherwise lower `PL2_WATTS`.
 - **Firmware:** `firmware` is not pre-selected because flashing should be a deliberate choice. It refuses to flash on battery and lets fwupd ask before each update. If LVFS has nothing for the device, use Lenovo's *BIOS Update Utility (Bootable CD)* for E14/E15 Gen 2.
 - **thermald** is masked on purpose: `thinkpad_acpi` exposes DYTC (`dytc_lapmode`) and thermald refuses to run alongside it.
