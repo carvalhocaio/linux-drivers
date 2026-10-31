@@ -77,7 +77,8 @@ trap 'die "line ${LINENO}: ${BASH_COMMAND}"' ERR
 # ─── helpers ────────────────────────────────────────────────────────────────
 
 write_file() { install -Dm"${2:-0644}" /dev/stdin "$1"; }
-user_write() { sudo -u "$TARGET_USER" install -Dm"${2:-0644}" /dev/stdin "$1"; }
+# Stdin is a root-owned pipe the user can't reopen via /dev/stdin; cat reads the inherited fd instead.
+user_write() { sudo -u "$TARGET_USER" sh -c 'cat | install -Dm"$1" /dev/stdin "$2"' sh "${2:-0644}" "$1"; }
 
 as_user() {
     sudo -u "$TARGET_USER" -H env \
@@ -265,8 +266,9 @@ EOF
     modprobe sch_cake
     sysctl --system >/dev/null
 
-    # Ubuntu ships wifi.powersave=3 (default-wifi-powersave-on.conf); this file sorts after it.
-    write_file /etc/NetworkManager/conf.d/99-wifi-powersave-off.conf <<'EOF'
+    # Ubuntu ships wifi.powersave=3 (default-wifi-powersave-on.conf); zz- sorts after it, digits would not.
+    rm -f /etc/NetworkManager/conf.d/99-wifi-powersave-off.conf
+    write_file /etc/NetworkManager/conf.d/zz-wifi-powersave-off.conf <<'EOF'
 [connection]
 wifi.powersave = 2
 EOF
