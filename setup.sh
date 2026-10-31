@@ -12,7 +12,7 @@ set -Eeuo pipefail
 
 readonly STEPS=(
     "base|System upgrade + base CLI"
-    "boot|Kernel params & modules (S3 sleep, power button, rtw88)"
+    "boot|Kernel params & modules (S3 sleep, power button, rtw88 + watchdog)"
     "memory|Memory (zram, earlyoom, sysctl, journald, ananicy)"
     "network|Network (Wi-Fi powersave off, TCP BBR + CAKE)"
     "locale|Locale, timezone, keyboard (br-thinkpad)"
@@ -181,8 +181,10 @@ step_base() {
 
 step_boot() {
     # Real S3 (deep) instead of s2idle: no spurious wakes or ACPI lid bugs.
+    # pcie_aspm=off: the RTL8822BE firmware locks up when the PCIe link enters
+    # ASPM L1; rtw88_pci.disable_aspm alone is not enough on this machine.
     write_file /etc/default/grub.d/90-thinkpad.cfg <<'EOF'
-GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} mem_sleep_default=deep"
+GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} mem_sleep_default=deep pcie_aspm=off"
 EOF
 
     # tiny_power_button sends SIGRTMIN+4 (instant poweroff) to PID 1;
@@ -197,13 +199,87 @@ options rtw88_pci disable_aspm=Y
 options rtw88_core disable_lps_deep=Y
 EOF
 
+    # Even with the options above the firmware can get stuck leaving LPS/IPS
+    # ("failed to leave ips state"), silencing the card and hiding every network
+    # until reboot. This watchdog reloads the module automatically instead.
+    write_file /usr/local/sbin/rtw88-watchdog 0755 <<'EOF'
+#!/usr/bin/env bash
+# Auto-recover the RTL8822BE when its firmware hangs leaving LPS/IPS.
+# Symptoms: "mac power on failed" / "failed to leave ips state" in dmesg,
+# followed by "no networks found" until the module is reloaded.
+set -uo pipefail
+
+readonly DEV=0000:04:00.0
+readonly DRIVER=rtw88_8822be
+readonly HANG_RE='failed to leave ips state|mac power on failed|failed to power on mac'
+readonly COOLDOWN=60
+
+log() { printf 'rtw88-watchdog: %s\n' "$*"; }
+
+recover() {
+    local iface
+    iface=$(find /sys/class/net -maxdepth 1 -name 'wl*' -printf '%f\n' -quit 2>/dev/null)
+
+    log "firmware hang detected; reloading ${DRIVER}"
+    # A wedged card can make NetworkManager/modprobe block in D-state: cap them.
+    [[ -n ${iface:-} ]] && timeout 10 nmcli device disconnect "$iface" >/dev/null 2>&1
+    timeout 20 modprobe -r "$DRIVER" >/dev/null 2>&1 || true
+    timeout 20 modprobe -r rtw88_pci >/dev/null 2>&1 || true
+    timeout 20 modprobe -r rtw88_core >/dev/null 2>&1 || true
+    sleep 2
+
+    # If the module cannot come back the function is wedged in D3; reset it.
+    if ! timeout 20 modprobe "$DRIVER" >/dev/null 2>&1; then
+        log "module reload failed; resetting PCI function"
+        if [[ -e /sys/bus/pci/devices/${DEV} ]]; then
+            echo 1 > "/sys/bus/pci/devices/${DEV}/remove"
+            sleep 1
+            echo 1 > /sys/bus/pci/rescan
+            sleep 2
+            timeout 20 modprobe "$DRIVER" >/dev/null 2>&1 || log "module reload failed again"
+        fi
+    fi
+    log "recovery finished"
+}
+
+last=0
+journalctl -k -f -n 0 -o cat |
+while IFS= read -r line; do
+    [[ $line =~ $HANG_RE ]] || continue
+    now=$(date +%s)
+    (( now - last < COOLDOWN )) && continue
+    last=$now
+    recover
+done
+EOF
+
+    write_file /etc/systemd/system/rtw88-watchdog.service <<'EOF'
+[Unit]
+Description=Auto-recover hung Realtek rtw88 Wi-Fi firmware
+After=NetworkManager.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SyslogIdentifier=rtw88-watchdog
+ExecStart=/usr/local/sbin/rtw88-watchdog
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now rtw88-watchdog.service
+
     regenerate_initramfs
     if command -v update-grub &>/dev/null; then
         update-grub
     else
-        warn "update-grub not found; add mem_sleep_default=deep to your bootloader manually"
+        warn "update-grub not found; add mem_sleep_default=deep pcie_aspm=off to your bootloader manually"
     fi
-    info "Kernel params and module options set (reboot required)"
+    info "Kernel params, module options and rtw88 watchdog set (reboot required)"
 }
 
 step_memory() {
@@ -778,6 +854,7 @@ Kernel|uname -r
 BIOS|cat /sys/class/dmi/id/bios_version
 Swap|swapon --show=NAME,SIZE --noheadings | tr '\n' ' '
 OOM|systemctl is-active earlyoom
+Wi-Fi wd|systemctl is-active rtw88-watchdog.service
 TCP|sysctl -n net.ipv4.tcp_congestion_control
 PipeWire|pipewire --version | tail -1
 Docker|docker --version
