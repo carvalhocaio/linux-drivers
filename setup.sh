@@ -77,7 +77,8 @@ trap 'die "line ${LINENO}: ${BASH_COMMAND}"' ERR
 # ─── helpers ────────────────────────────────────────────────────────────────
 
 write_file() { install -Dm"${2:-0644}" /dev/stdin "$1"; }
-user_write() { sudo -u "$TARGET_USER" install -Dm"${2:-0644}" /dev/stdin "$1"; }
+# Stdin is a root-owned pipe the user can't reopen via /dev/stdin; cat reads the inherited fd instead.
+user_write() { sudo -u "$TARGET_USER" sh -c 'cat | install -Dm"$1" /dev/stdin "$2"' sh "${2:-0644}" "$1"; }
 
 as_user() {
     sudo -u "$TARGET_USER" -H env \
