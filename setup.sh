@@ -181,8 +181,9 @@ step_base() {
 
 step_boot() {
     # Real S3 (deep) instead of s2idle: no spurious wakes or ACPI lid bugs.
-    # pcie_aspm=off: the RTL8822BE firmware locks up when the PCIe link enters
-    # ASPM L1; rtw88_pci.disable_aspm alone is not enough on this machine.
+    # pcie_aspm=off only stops the kernel from *managing* ASPM: whatever the BIOS
+    # enabled stays on. rtw88-aspm-off (below) clears it on the Wi-Fi link, and
+    # with the kernel hands-off nothing re-enables it afterwards.
     write_file /etc/default/grub.d/90-thinkpad.cfg <<'EOF'
 GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} mem_sleep_default=deep pcie_aspm=off"
 EOF
@@ -201,11 +202,35 @@ options rtw88_pci disable_aspm=Y disable_msi=Y
 options rtw88_core disable_lps_deep=Y
 EOF
 
+    # The root cause of the firmware hangs: the BIOS enables ASPM L0s/L1 and the
+    # L1.1/L1.2 substates on the card and its root port, and neither pcie_aspm=off
+    # nor rtw88_pci.disable_aspm turns them off (check: lspci -vvv -s 04:00.0,
+    # LnkCtl / L1SubCtl1). Clear them by hand: ASPM L0s/L1 first (card, then
+    # port), then the L1 substates. Re-run after S3, where the BIOS may re-arm them.
+    write_file /usr/local/sbin/rtw88-aspm-off 0755 <<'EOF'
+#!/bin/sh
+# Disable PCIe ASPM (L0s, L1, L1.1, L1.2) on the RTL8822BE and its root port.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+for d in /sys/bus/pci/devices/*; do
+    [ "$(cat "$d/vendor"):$(cat "$d/device")" = "0x10ec:0xb822" ] || continue
+    dev=$(basename "$d")
+    port=$(basename "$(readlink -f "$d/..")")
+    for s in "$dev" "$port"; do setpci -s "$s" CAP_EXP+10.w=0:3; done
+    for s in "$dev" "$port"; do setpci -s "$s" ECAP_L1PM+8.l=0:f 2>/dev/null || true; done
+    logger -t rtw88-aspm-off "ASPM disabled on ${dev} and ${port}"
+done
+EOF
+    write_file /usr/lib/systemd/system-sleep/rtw88-aspm-off 0755 <<'EOF'
+#!/bin/sh
+[ "$1" = post ] && exec /usr/local/sbin/rtw88-aspm-off
+exit 0
+EOF
+
     # Never let the card (or its root port) drop to D3cold: once it does, the
     # RTL8822BE can't return to D0 ("Unable to change power state from D3cold
     # to D0") and only a reboot brings Wi-Fi back.
     write_file /etc/udev/rules.d/90-rtw88-pm.rules <<'EOF'
-ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="0x10ec", ATTR{device}=="0xb822", ATTR{power/control}="on", ATTR{d3cold_allowed}="0", RUN+="/bin/sh -c 'echo on > /sys%p/../power/control; echo 0 > /sys%p/../d3cold_allowed'"
+ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="0x10ec", ATTR{device}=="0xb822", ATTR{power/control}="on", ATTR{d3cold_allowed}="0", RUN+="/bin/sh -c 'echo on > /sys%p/../power/control; echo 0 > /sys%p/../d3cold_allowed'", RUN+="/usr/local/sbin/rtw88-aspm-off"
 EOF
     udevadm control --reload-rules 2>/dev/null || true
     udevadm trigger --subsystem-match=pci --attr-match=vendor=0x10ec --attr-match=device=0xb822 2>/dev/null || true
@@ -292,7 +317,7 @@ recover() {
     timeout 20 modprobe "$DRIVER" >/dev/null 2>&1
     if [[ -n ${dev:-} ]] && card_up "$dev"; then log "recovered after PCI rescan"; return; fi
 
-    log "recovery failed; a full power-off (not reboot) may be needed"
+    log "recovery failed; reboot to bring the card back"
 }
 
 if dev=$(find_dev); then pin_power "$dev"; fi
