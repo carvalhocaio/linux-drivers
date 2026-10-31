@@ -65,7 +65,7 @@ sudo ENABLE_ANANICY=0 ./setup.sh memory    # skip ananicy
 | `/etc/modprobe.d/90-*.conf` | `boot` |
 | `/etc/sysctl.d/90-{memory,network}.conf` | `memory`, `network` |
 | `/etc/systemd/zram-generator.conf` | `memory` |
-| `/etc/NetworkManager/conf.d/99-wifi-powersave-off.conf` | `network` |
+| `/etc/NetworkManager/conf.d/zz-wifi-powersave-off.conf` | `network` |
 | `/etc/pipewire/**/92-*.conf`, `/etc/wireplumber/wireplumber.conf.d/51-*.conf` | `audio` |
 | `/etc/tmpfiles.d/90-thinkpad-power.conf` | `hardware` |
 | `/etc/systemd/logind.conf.d/90-power-key.conf` | `hardware` |

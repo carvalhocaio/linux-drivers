@@ -266,8 +266,9 @@ EOF
     modprobe sch_cake
     sysctl --system >/dev/null
 
-    # Ubuntu ships wifi.powersave=3 (default-wifi-powersave-on.conf); this file sorts after it.
-    write_file /etc/NetworkManager/conf.d/99-wifi-powersave-off.conf <<'EOF'
+    # Ubuntu ships wifi.powersave=3 (default-wifi-powersave-on.conf); zz- sorts after it, digits would not.
+    rm -f /etc/NetworkManager/conf.d/99-wifi-powersave-off.conf
+    write_file /etc/NetworkManager/conf.d/zz-wifi-powersave-off.conf <<'EOF'
 [connection]
 wifi.powersave = 2
 EOF
